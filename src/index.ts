@@ -1,8 +1,9 @@
 if (process.env.NODE_ENV !== 'production') require('dotenv').config()
 import { App, ReactionMessageItem } from '@slack/bolt'
 import { Game } from './game'
+import { GameButtonAction } from './render'
 
-const bot = new App({
+export const bot = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET
 })
@@ -17,38 +18,31 @@ const games: Record<string, Game> = {}
 // }
 
 bot.command('/tetris', async ({ command, ack, say, client }) => {
-  await ack()
+  ack()
 
   const game = new Game({
     channel: command.channel_id,
     user: command.user_id
   })
 
-  const gameMsgTs = await game.startGame(client)
+  const gameTs = await game.startGame()
 
-  // Add reactions for Tetris controls
-  // for (const emoji of Object.values(EmojiControl)) {
-  //   client.reactions.add({
-  //     channel: command.channel_id,
-  //     timestamp: gameMsgTs,
-  //     name: emoji
-  //   })
-  // }
-
-  games[gameMsgTs] = game
+  games[gameTs] = game
 })
 
 bot.event('app_mention', async ({ event, client }) => {
   // say() sends a message to the channel where the event was triggered
-  client.chat.postMessage({
+  if (event.thread_ts) return
+  client.chat.postEphemeral({
     channel: event.channel,
+    user: event.user,
     text: 'Hello',
     blocks: [
       {
         "type": "section",
         "text": {
           "type": "mrkdwn",
-          "text": "Hello! Do you want to play Tetris?"
+          "text": "Hello! Do you want to play Tetris? To start a game, type `/tetris`\n\nSource: https://github.com/scitronboy/slack-tetris"
         }
       }
     ]
@@ -56,7 +50,27 @@ bot.event('app_mention', async ({ event, client }) => {
 })
 
 bot.action(/btn_.+/, async ({ ack, body }) => {
-  await ack()
+  ack()
+
+  const actionId: GameButtonAction = (body as any).actions[0].action_id
+  const gameTs: string = (body as any).message.ts
+
+  // TODO handle nonexistent game
+  const game = games[gameTs]
+  if (!game) return
+
+  switch (actionId) {
+    case 'btn_left':
+    case 'btn_right':
+      game.movePiece(actionId.slice(4) as any) // Slice of `btn_` part
+      break
+    case 'btn_down':
+      game.dropPiece()
+      break
+    case 'btn_rotate':
+      game.rotatePiece()
+      break
+  }
 })
 
 // function isMsgReaction(item): item is ReactionMessageItem {

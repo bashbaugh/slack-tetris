@@ -1,30 +1,39 @@
 import { TetrominoName } from './game'
+import { bot } from '.'
 
-const blockEmoji: Record<TetrominoName, string> = {
+const BLOCK_EMOJI: Record<TetrominoName, string> = {
   Z: ':100000:', // red
   S: ':001000:', // green
   J: ':000010:', // blue
   I: ':001009:', // cyan
   L: ':090300:', // orange
-  O: ':090900:', // yellow - this is the square block
+  O: ':090900:', // yellow
   T: ':050109:', // purple
 }
 
 const BLANK_EMOJI = ':blank:'
-const INVISIBLE_CHARACTER = '⁣' // We can use this to force emojis down to their smaller size
+const INVISIBLE_CHARACTER = '⁣' // We can use this to force emojis down to their smaller size if needed.
 
-type TetrisBlocks = (TetrominoName | null)[][]
-
-export function renderBlockGrid(blocks: TetrisBlocks): string {
-  return blocks.reduce((str, line) => str + '\n' + line.map(b => b ? blockEmoji[b] : BLANK_EMOJI).join(''), '') + INVISIBLE_CHARACTER
+const GAME_BUTTONS = {
+  'btn_rotate': ':repeat:',
+  'btn_left': ':arrow_left:',
+  'btn_right': ':arrow_right:',
+  'btn_down': ':arrow_down:'
 }
 
-interface GameRenderData {
+export type GameButtonAction = keyof typeof GAME_BUTTONS
+
+export type TetrisBlocksGrid = (TetrominoName | null)[][]
+
+const renderBlockGrid = (blocks: TetrisBlocksGrid) =>
+  blocks.reduce((str, line) => str + '\n' + line.map(b => b ? BLOCK_EMOJI[b] : BLANK_EMOJI).join(''), '') + INVISIBLE_CHARACTER
+
+export interface GameMessageData {
   startedBy: string // user ID
-  blocks?: TetrisBlocks
+  blocks?: TetrisBlocksGrid
 }
 
-export function renderGameBlocks(game: GameRenderData): { blocks: any, text: string } {
+function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } {
   return {
     text: 'Tetris game',
     blocks: [
@@ -44,45 +53,47 @@ export function renderGameBlocks(game: GameRenderData): { blocks: any, text: str
       },
       {
         "type": "actions",
-        "elements": [
-          {
-            "type": "button",
-            "text": {
-              "type": "plain_text",
-              "text": ":repeat:",
-              "emoji": true
-            },
-            "action_id": "btn_rotate"
+        "elements": Object.entries(GAME_BUTTONS).map(([action_id, text]) => ({
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "emoji": true,
+            text,
           },
-          {
-            "type": "button",
-            "text": {
-              "type": "plain_text",
-              "text": ":arrow_left:",
-              "emoji": true
-            },
-            "action_id": "btn_left"
-          },
-          {
-            "type": "button",
-            "text": {
-              "type": "plain_text",
-              "text": ":arrow_right:",
-              "emoji": true
-            },
-            "action_id": "btn_right"
-          },
-          {
-            "type": "button",
-            "text": {
-              "type": "plain_text",
-              "text": ":arrow_down:",
-              "emoji": true
-            },
-            "action_id": "btn_down"
-          }
-        ]
+          action_id
+        }))
       }
     ]
   }
+}
+
+const splashText = ` 
+\`\`\`
+ _____   _____   _____   _____    _   _____  
+|_   _| | ____| |_   _| |  _  \\  | | /  ___/ 
+  | |   | |__     | |   | |_| |  | | | |___  
+  | |   |  __|    | |   |  _  /  | | \\___  \\ 
+  | |   | |___    | |   | | \\ \\  | |  ___| | 
+  |_|   |_____|   |_|   |_|  \\_\\ |_| /_____/ 
+\`\`\` 
+
+:parrotwave1: :parrotwave2: :parrotwave3: :parrotwave4: :parrotwave5: :parrotwave6: :parrotwave7:`
+
+export async function createGame (channel: string): Promise<string> {
+  const msg = await bot.client.chat.postMessage({
+    token: process.env.SLACK_BOT_TOKEN,
+    channel,
+    text: splashText
+  })
+
+  return msg.ts
+}
+
+export async function updateGame (channel: string, ts: string, game: GameMessageData) {
+  await bot.client.chat.update({
+    token: process.env.SLACK_BOT_TOKEN,
+    channel,
+    ts,
+    ...renderGameBlocks(game)
+  })
 }
