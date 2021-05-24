@@ -1,3 +1,9 @@
+import { App, SayFn, SlashCommand } from '@slack/bolt'
+import { WebClient } from '@slack/web-api'
+import { renderGameBlocks } from './render'
+
+const GRID_WIDTH = 10
+const GRID_HEIGHT = 20
 
 export type TetrominoName = 'I' | 'J' | 'L' | 'S' | 'Z' | 'T' | 'O'
 
@@ -54,16 +60,37 @@ const getTetromino = (type: TetrominoName, rotation: Rotation): Omit<Tetromino, 
 }
 
 interface NewGameConfig {
-  timestamp: string
+  channel: string,
+  user: string
 }
 
 export class Game {
+  cfg: NewGameConfig
   timestamp: string
   tetrominos: Tetromino[]
 
   constructor (cfg: NewGameConfig) { 
-    this.timestamp = cfg.timestamp
     this.tetrominos = []
+    this.cfg = cfg
+  }
+
+  public async startGame (client: WebClient) {
+    const message = await client.chat.postMessage({
+      channel: this.cfg.channel,
+      ...renderGameBlocks({
+        startedBy: this.cfg.user,
+      })
+    })
+
+    this.timestamp = message.ts
+
+    setInterval(this.loop, 1000)
+
+    return this.timestamp
+  }
+
+  public loop () {
+    
   }
 
   public renderGrid () {
@@ -71,6 +98,10 @@ export class Game {
   }
 
   public rotatePiece () {
+
+  }
+
+  public movePiece(direction: 'left' | 'right' | 'down') {
 
   }
 }
