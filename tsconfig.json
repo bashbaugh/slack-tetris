@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": ["esnext"],
+    "experimentalDecorators": true,
+    "esModuleInterop": true,
+    "outDir": "./dist",
+    "baseUrl": "src",
+    "target": "ES5",
+    "downlevelIteration": true,
+    "moduleResolution": "node",
+    "types": []
+  },
+  "include": [
+    "./src/**/*.ts"
+  ]
+}

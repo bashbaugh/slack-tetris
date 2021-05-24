@@ -1,0 +1,22 @@
+{
+  "name": "slack-tetris",
+  "version": "0.1.0",
+  "description": "Tetris game for Slack",
+  "main": "dist/index.js",
+  "repository": "https://github.com/scitronboy/slack-tetris.git",
+  "author": "Benjamin Ashbaugh <hi@benjaminashbaugh.me>",
+  "license": "MIT",
+  "scripts": {
+    "dev": "tsnd src/index.ts",
+    "build": "tsc --project tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "devDependencies": {
+    "dotenv": "^10.0.0",
+    "ts-node-dev": "^1.1.6",
+    "typescript": "^4.2.4"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.3.0"
+  }
+}
