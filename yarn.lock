@@ -147,6 +147,11 @@
     "@types/qs" "*"
     "@types/serve-static" "*"
 
+"@types/humanize-duration@^3.25.0":
+  version "3.25.0"
+  resolved "https://registry.yarnpkg.com/@types/humanize-duration/-/humanize-duration-3.25.0.tgz#bb451b247dad36424d1581cf040d26d4d1cbfc70"
+  integrity sha512-9aRUp7GAWKy/1wpib4PNsLOj313xl8MtVQzIG+oRFNOZBkgBeJ466duflFn0Wb+MtGkyydEpVQ5NrU8D115dGg==
+
 "@types/is-stream@^1.1.0":
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/@types/is-stream/-/is-stream-1.1.0.tgz#b84d7bb207a210f2af9bed431dc0fbe9c4143be1"
@@ -769,6 +774,11 @@ http-errors@1.7.3, http-errors@~1.7.2:
     setprototypeof "1.1.1"
     statuses ">= 1.5.0 < 2"
     toidentifier "1.0.0"
+
+humanize-duration@^3.26.0:
+  version "3.26.0"
+  resolved "https://registry.yarnpkg.com/humanize-duration/-/humanize-duration-3.26.0.tgz#4d77f6b3d2fe0ca1ff14623ccc2b2f8b48ab1aaf"
+  integrity sha512-SddekX3p5ApvPY6bbAYppGKe874jP6iFZXYtrQToDV4R0j2UpTYPqwTFM2QpXpuw9DhS/eXTUnKYTF9TbXAJ6A==
 
 iconv-lite@0.4.24:
   version "0.4.24"

@@ -1,24 +1,28 @@
 import { TetrominoName } from './game'
 import { bot } from '.'
+import humanizeDuration from 'humanize-duration'
 
 const BLOCK_EMOJI: Record<TetrominoName, string> = {
-  Z: ':100000:', // red
-  S: ':001000:', // green
-  J: ':000010:', // blue
-  I: ':001009:', // cyan
-  L: ':090300:', // orange
-  O: ':090900:', // yellow
-  T: ':050109:', // purple
+  Z: ':tetris-block-z:', // red
+  S: ':tetris-block-s:', // green
+  J: ':tetris-block-j:', // blue
+  I: ':tetris-block-i:', // cyan
+  L: ':tetris-block-l:', // orange
+  O: ':tetris-block-o:', // yellow
+  T: ':tetris-block-t:', // purple
 }
 
 const BLANK_EMOJI = ':blank:'
 const INVISIBLE_CHARACTER = '⁣' // We can use this to force emojis down to their smaller size if needed.
 
+const WALL_LEFT = ':tetris-wall-left:'
+const WALL_RIGHT = ':tetris-wall-right:'
+
 const GAME_BUTTONS = {
-  'btn_rotate': ':repeat:',
-  'btn_left': ':arrow_left:',
-  'btn_right': ':arrow_right:',
-  'btn_down': ':arrow_down:'
+  'btn_rotate': ':tetris-control-rotate:',
+  'btn_left': ':tetris-control-left:',
+  'btn_right': ':tetris-control-right:',
+  'btn_down': ':tetris-control-down:'
 }
 
 export type GameButtonAction = keyof typeof GAME_BUTTONS
@@ -26,44 +30,69 @@ export type GameButtonAction = keyof typeof GAME_BUTTONS
 export type TetrisBlocksGrid = (TetrominoName | null)[][]
 
 const renderBlockGrid = (blocks: TetrisBlocksGrid) =>
-  blocks.reduce((str, line) => str + '\n' + line.map(b => b ? BLOCK_EMOJI[b] : BLANK_EMOJI).join(''), '') + INVISIBLE_CHARACTER
+  blocks.reduce((str, line) => str + '\n' + WALL_LEFT + line.map(b => b ? BLOCK_EMOJI[b] : BLANK_EMOJI).join('') + WALL_RIGHT, '') + INVISIBLE_CHARACTER
 
 export interface GameMessageData {
   startedBy: string // user ID
   blocks?: TetrisBlocksGrid
+  score: number
+  gameOver: boolean
+  duration: number
 }
 
 function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } {
+  const blocks: any = [
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": game.gameOver 
+          ? `<@${game.startedBy}> played Tetris for ${humanizeDuration(game.duration)}. Final score: *${game.score}*` 
+          : `<@${game.startedBy}> is playing. Score: *${game.score}* | ${humanizeDuration(game.duration)}`
+      }
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": `${renderBlockGrid(game.blocks || [])}`
+      }
+    },
+  ]
+
+  if (!game.gameOver) {
+    blocks.push({
+      "type": "actions",
+      "elements": Object.entries(GAME_BUTTONS).map(([action_id, text]) => ({
+        "type": "button",
+        "text": {
+          "type": "plain_text",
+          "emoji": true,
+          text,
+        },
+        action_id
+      }))
+    })
+  } else {
+    blocks.push(
+      {
+        "type": "divider"
+      }, {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": `~ ~ ~ *GAME OVER* ~ ~ ~`
+        }
+      }
+    )
+  }
+
   return {
     text: 'Tetris game',
-    blocks: [
-      {
-        "type": "section",
-        "text": {
-          "type": "mrkdwn",
-          "text": `<@${game.startedBy}> started a Tetris game`
-        }
-      },
-      {
-        "type": "section",
-        "text": {
-          "type": "mrkdwn",
-          "text": `${renderBlockGrid(game.blocks || [])}`
-        }
-      },
-      {
-        "type": "actions",
-        "elements": Object.entries(GAME_BUTTONS).map(([action_id, text]) => ({
-          "type": "button",
-          "text": {
-            "type": "plain_text",
-            "emoji": true,
-            text,
-          },
-          action_id
-        }))
-      }
-    ]
+    blocks
   }
 }
 

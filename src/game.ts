@@ -75,21 +75,30 @@ export class Game {
   nextPieces: TetrominoName[] // New tetrominos to place
   // client: WebClient
   loopInterval: NodeJS.Timeout
-  startedAt: Date
+  startedAt: number
+  endedAt: number
+  level: number
+  score: number
+  gameOver: boolean
 
   constructor (cfg: NewGameConfig) { 
     this.tetrominos = []
     this.nextPieces = []
     this.cfg = cfg
+    this.score = 0
+    this.level = 1
   }
 
   /** Creates the game message and starts the loop */
   public async startGame () {
     this.ts = await createGame(this.cfg.channel)
-    this.startedAt = new Date()
+    this.startedAt = new Date().getTime()
     // this.client = client
 
     this.loopInterval = setInterval(() => this.loop(), 2000)
+
+    // Start game after 1 second
+    setTimeout(() => this.update(), 1000)
 
     return this.ts
   }
@@ -116,7 +125,10 @@ export class Game {
   private update() {
     updateGame(this.cfg.channel, this.ts, {
       startedBy: this.cfg.user,
-      blocks: this.renderBlockGrid().reverse() // Render top-side up!
+      blocks: this.renderBlockGrid().reverse(), // Render top-side up!,
+      score: this.score,
+      gameOver: this.gameOver,
+      duration: (this.endedAt || new Date().getTime()) - this.startedAt
     })
   }
 
@@ -126,11 +138,17 @@ export class Game {
 
     for (const piece of tetriminos || this.tetrominos) {
       // Check which cells this shape fills and fill the corresponding cells on the grid:
-      iterateMatrix(piece.shape, (shapePart, i, j) => {
-        if (shapePart) {
+      iterateMatrix(piece.shape, (block, i, j) => {
+        if (block) {
           grid[piece.position[0] + i][piece.position[1] + j] = piece.type
         }
       })
+    }
+
+    for (const [i, row] of grid.entries()) {
+      const lineClear = row.find(b => !b) === undefined
+      
+    
     }
 
     return grid // Render top-side up!
@@ -144,22 +162,31 @@ export class Game {
     }
 
     const nextPieceType = this.nextPieces.shift()
-    this.tetrominos.push({
+    const nextPiece: Tetromino = {
       ...getTetromino(nextPieceType, 0),
       position: [GRID_HEIGHT - 4, Math.ceil(GRID_WIDTH / 2) - 2]
-    })
+    }
+
+    if (!this.isValidPosition(nextPiece)) { // Can't place any more pieces; game over!
+      this.endGame()
+      return
+    }
+
+    this.tetrominos.push(nextPiece)
   }
 
   /** Checks the position of a piece to make sure it doens't overlap with another piece, or the walls */
   private isValidPosition (piece: Tetromino): boolean {
     const grid = this.renderBlockGrid() // Grid of existing pieces
+    const shapeSize = piece.shape.length
 
-    console.log(grid)
-    const foundConflict = iterateMatrix(piece.shape, (shapePart, i, j) => {
-      if (shapePart && piece.position[0] + i < 0) return true // A filled spot is going below the grid; this is invalid
+    const foundConflict = iterateMatrix(piece.shape, (block, i, j) => {
+      // A filled spot is going below the grid; this is invalid:
+      if (block && piece.position[0] + i < 0) return true
+      // A filled spot is passing the walls:
+      if (block && piece.position[1] + j < 0 || piece.position[1] + j > GRID_WIDTH - 1) return true
       // If the shape wants to fill a cell that's already filled on the grid, there's a conflict:
-      console.log(shapePart, piece.position[0] + i, grid[piece.position[0] + i] && grid[piece.position[0] + i][piece.position[1] + j])
-      if (shapePart && grid[piece.position[0] + i][piece.position[1] + j]) return true
+      if (block && grid[piece.position[0] + i][piece.position[1] + j]) return true
     })
 
     return !foundConflict
@@ -211,7 +238,10 @@ export class Game {
   }
 
   /** Stops the game */
-  public stopGame() {
+  public endGame() {
     clearInterval(this.loopInterval)
+    this.gameOver = true
+    this.endedAt = new Date().getTime() 
+    this.update()
   }
 }
