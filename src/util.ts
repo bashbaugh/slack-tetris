@@ -11,7 +11,7 @@ export function shuffleArray<T extends unknown>(array: T[]): T[] {
   return shuffled
 }
 
-/** Like forEach but for a 2d array (used for tetromino shapes). If the function returns a non-falsy value the loop will break and return the resilt */
+/** Like forEach but for a 2d array (used for tetromino shapes). If the function returns a non-falsy value the loop will break and return the result */
 export function iterateMatrix<T, I>(array: T[][], forEach: (el: T, i: number, j: number) => I): I | false {
   for (let i = 0; i < array.length; i++) {
     for (let j = 0; j < array[i].length; j++) {
@@ -23,6 +23,7 @@ export function iterateMatrix<T, I>(array: T[][], forEach: (el: T, i: number, j:
   return false
 }
 
+/** Return a minutes:seconds string from milliseconds */
 export function formatMilliseconds(ms: number) {
   const minutes = Math.floor(ms / 1000 / 60)
   const seconds = Math.floor(ms / 1000 % 60)

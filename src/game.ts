@@ -2,7 +2,7 @@ import { iterateMatrix, shuffleArray } from './util'
 import { TetrisBlocksGrid, createGame, updateGame } from './render'
 import cloneDeep from 'clone-deep'
 
-const GRID_WIDTH = 11
+const GRID_WIDTH = 10
 const GRID_HEIGHT = 16
 
 const SCORE_TABLE = {
@@ -13,6 +13,16 @@ const SCORE_TABLE = {
     4: 1200
   }
 }
+
+const LEVELS: [scoreThreshold: number, intervalDuration: number][] = [
+  [0, 1600],
+  [100, 1400],
+  [300, 1000],
+  [1500, 800],
+  [3000, 600],
+  [6000, 400],
+  [10000, 200],
+]
 
 export type TetrominoName = 'I' | 'J' | 'L' | 'S' | 'Z' | 'T' | 'O'
 
@@ -38,15 +48,6 @@ const TETROMINO_SHAPES: Record<TetrominoName, string> = {
   J: '--#,--#,-##',
   Z: '---,##-,-##',
 }
-
-// const tetriminoShapes: Record<TetriminoName, boolean[][]> = Object.fromEntries(
-//   Object.entries(tetriminoShapeStrings)
-//     .map(([name, shape]) => {
-//       const rows = shape.split(',')
-//       // Take a row of - and # and convert it to an array of false and true
-//       return [name, rows.map(row => Array.from(row).map(char => char === '#'))]
-//     })
-// ) as any
 
 const getTetromino = (type: TetrominoName, rotation: Rotation): Omit<Tetromino, 'position'> => {
   const shapeRows = TETROMINO_SHAPES[type].split(',')
@@ -85,16 +86,15 @@ export class Game {
   loopInterval: NodeJS.Timeout
   startedAt: number
   endedAt: number
-  level: number
   score: number
   gameOver: boolean
+  lastLevel: number
 
   constructor (cfg: NewGameConfig) { 
     this.tetrominos = []
     this.nextPieces = []
     this.cfg = cfg
     this.score = 0
-    this.level = 1
   }
 
   /** Creates the game message and starts the loop */
@@ -103,7 +103,7 @@ export class Game {
     this.startedAt = new Date().getTime()
     // this.client = client
 
-    this.loopInterval = setInterval(() => this.loop(), 2000)
+    this.loopInterval = setInterval(() => this.loop(), LEVELS[0][1])
 
     // Start game after 1 second
     setTimeout(() => this.update(), 1000)
@@ -126,6 +126,12 @@ export class Game {
       }
     }
 
+    // If we are on a new level, cancel the loop interval and set a new one with a shorter duration
+    if (this.level > this.lastLevel) {
+      clearInterval(this.loopInterval)
+      this.loopInterval = setInterval(() => this.loop(), LEVELS[this.level][1])
+    }
+
     this.update()
   }
 
@@ -136,7 +142,8 @@ export class Game {
       blocks: this.renderBlockGrid().reverse(), // Render top-side up!,
       score: this.score,
       gameOver: this.gameOver,
-      duration: (this.endedAt || new Date().getTime()) - this.startedAt
+      duration: (this.endedAt || new Date().getTime()) - this.startedAt,
+      nextPiece: this.nextPieces[0]
     })
   }
 
@@ -145,7 +152,6 @@ export class Game {
     const grid: TetrisBlocksGrid = new Array(GRID_HEIGHT).fill(null).map(_ => new Array(GRID_WIDTH).fill(null))
 
     this.score = 0
-    let totalLineClears = 0
 
     for (const piece of tetriminos || this.tetrominos) {
       // Check which cells this shape fills and fill the corresponding cells on the grid:
@@ -160,23 +166,24 @@ export class Game {
         const lineClear = row.find(b => !b) === undefined // zero null places
         if (lineClear) {
           grid.splice(i, 1) // Remove cleared row
+          grid.push(new Array(GRID_WIDTH).fill(null)) // Add new empty row at top
           lineClears++
         }
       }
 
-      const lineClearsFromThisPiece = lineClears - totalLineClears
-
-      this.score += (SCORE_TABLE.lineClears[lineClearsFromThisPiece] || 0) * this.level
-
-      totalLineClears = lineClears
+      this.score += (SCORE_TABLE.lineClears[lineClears] || 0) * this.level
     }
 
     return grid // Render top-side up!
   }
 
+  public get level (): number {
+    return LEVELS.reduce((lvl, [threshold]) => lvl += this.score > Number(threshold) ? 1 : 0, 0)
+  }
+
   /** Creates a new active piece and spawns it at the top */
   private addPiece () {
-    if (!this.nextPieces.length) {
+    if (this.nextPieces.length < 2) { // Running out of new pieces; add 7 more
       const newSet = shuffleArray(Object.keys(TETROMINO_SHAPES) as TetrominoName[])
       this.nextPieces = this.nextPieces.concat(newSet)
     }

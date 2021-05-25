@@ -13,6 +13,16 @@ const BLOCK_EMOJI: Record<TetrominoName, string> = {
   T: ':tetris-block-t:', // purple
 }
 
+const TETROMINO_EMOJI: Record<TetrominoName, string> = {
+  Z: ':tetromino-z:', // red
+  S: ':tetromino-s:', // green
+  J: ':tetromino-j:', // blue
+  I: ':tetromino-i:', // cyan
+  L: ':tetromino-l:', // orange
+  O: ':tetromino-o:', // yellow
+  T: ':tetromino-t:', // purple
+}
+
 const BLANK_EMOJI = ':blank:'
 const INVISIBLE_CHARACTER = '⁣' // We can use this to force emojis down to their smaller size if needed.
 
@@ -23,25 +33,31 @@ const GAME_BUTTONS = {
   'btn_rotate': ':tetris-control-rotate:',
   'btn_left': ':tetris-control-left:',
   'btn_right': ':tetris-control-right:',
-  'btn_down': ':tetris-control-down:'
+  'btn_down': ':tetris-control-down:',
+  'btn_stop': ':tetris-control-stop:'
 }
 
 export type GameButtonAction = keyof typeof GAME_BUTTONS
 
 export type TetrisBlocksGrid = (TetrominoName | null)[][]
 
-const renderBlockGrid = (blocks: TetrisBlocksGrid) =>
+const renderBlockGrid = (blocks: TetrisBlocksGrid) => 
   blocks.reduce((str, line) => str + '\n' + WALL_LEFT + line.map(b => b ? BLOCK_EMOJI[b] : BLANK_EMOJI).join('') + WALL_RIGHT, '') + INVISIBLE_CHARACTER
 
 export interface GameMessageData {
   startedBy: string // user ID
   blocks?: TetrisBlocksGrid
+  nextPiece?: TetrominoName
   score: number
   gameOver: boolean
   duration: number
 }
 
 function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } {
+  const nextPieceText = game.nextPiece 
+    ? `\n> *Next*\n> ${TETROMINO_EMOJI[game.nextPiece]}`
+    : ''
+
   const blocks: any = [
     {
       "type": "section",
@@ -49,7 +65,7 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
         "type": "mrkdwn",
         "text": game.gameOver 
           ? `<@${game.startedBy}> played Tetris for ${humanizeDuration(game.duration)}. Final score: *${game.score}*` 
-          : `<@${game.startedBy}> is playing. Score: *${game.score}* | ${formatMilliseconds(game.duration)}`
+          : `<@${game.startedBy}> is playing. Score: *${game.score}* | ${formatMilliseconds(game.duration)}${nextPieceText}`
       }
     },
     {
@@ -85,7 +101,7 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
         "type": "section",
         "text": {
           "type": "mrkdwn",
-          "text": `~ ~ ~ *GAME OVER* ~ ~ ~`
+          "text": `~ ~ ~ ~ ~ ~ ~ *GAME OVER* ~ ~ ~ ~ ~ ~ ~`
         }
       }
     )
@@ -127,3 +143,13 @@ export async function updateGame (channel: string, ts: string, game: GameMessage
     ...renderGameBlocks(game)
   })
 }
+
+export const mentionBlocks = [
+  {
+    "type": "section",
+    "text": {
+      "type": "mrkdwn",
+      "text": "Hello! Do you want to play Tetris? To start a game, type `/tetris`\n\nSource: https://github.com/scitronboy/slack-tetris"
+    }
+  }
+]

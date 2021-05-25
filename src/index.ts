@@ -1,7 +1,7 @@
 if (process.env.NODE_ENV !== 'production') require('dotenv').config()
 import { App, ReactionMessageItem } from '@slack/bolt'
 import { Game } from './game'
-import { GameButtonAction } from './render'
+import { GameButtonAction, mentionBlocks } from './render'
 
 export const bot = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -16,6 +16,8 @@ const games: Record<string, Game> = {}
 //   right = 'arrow_right',
 //   down = 'arrow_down',
 // }
+
+
 
 bot.command('/tetris', async ({ command, ack, say, client }) => {
   ack()
@@ -37,27 +39,26 @@ bot.event('app_mention', async ({ event, client }) => {
     channel: event.channel,
     user: event.user,
     text: 'Hello',
-    blocks: [
-      {
-        "type": "section",
-        "text": {
-          "type": "mrkdwn",
-          "text": "Hello! Do you want to play Tetris? To start a game, type `/tetris`\n\nSource: https://github.com/scitronboy/slack-tetris"
-        }
-      }
-    ]
+    blocks: mentionBlocks
   })
 })
 
-bot.action(/btn_.+/, async ({ ack, body }) => {
+bot.action(/btn_.+/, async ({ ack, body, client }) => {
   ack()
 
   const actionId: GameButtonAction = (body as any).actions[0].action_id
   const gameTs: string = (body as any).message.ts
 
-  // TODO handle nonexistent game
   const game = games[gameTs]
-  if (!game) return
+  if (!game) {
+    client.chat.update({
+      channel: body.channel.id,
+      ts: gameTs,
+      text: `Oh no, I don't remember this game. Start another?`,
+      blocks: []
+    })
+    return
+  }
 
   switch (actionId) {
     case 'btn_left':
@@ -69,6 +70,9 @@ bot.action(/btn_.+/, async ({ ack, body }) => {
       break
     case 'btn_rotate':
       game.rotatePiece()
+      break
+    case 'btn_stop':
+      game.endGame()
       break
   }
 })
