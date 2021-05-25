@@ -16,9 +16,9 @@ const SCORE_TABLE = {
 
 const LEVELS: [scoreThreshold: number, intervalDuration: number][] = [
   [0, 1600],
-  [100, 1400],
+  [100, 1200],
   [300, 1000],
-  [1500, 800],
+  [1000, 800],
   [3000, 600],
   [6000, 400],
   [10000, 200],
