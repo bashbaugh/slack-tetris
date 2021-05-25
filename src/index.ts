@@ -17,14 +17,17 @@ const games: Record<string, Game> = {}
 //   down = 'arrow_down',
 // }
 
-
-
 bot.command('/tetris', async ({ command, ack, say, client }) => {
   ack()
 
+  let mode = command.text
+
+  if (!(mode == '1p' || mode == '2p')) mode = null
+
   const game = new Game({
     channel: command.channel_id,
-    user: command.user_id
+    user: command.user_id,
+    mode: mode as '1p' | '2p'
   })
 
   const gameTs = await game.startGame()
@@ -54,11 +57,14 @@ bot.action(/btn_.+/, async ({ ack, body, client }) => {
     client.chat.update({
       channel: body.channel.id,
       ts: gameTs,
-      text: `Oh no, I don't remember this game. Start another?`,
+      text: `Oh no. My server may have restarted because I don't remeber this game. Start another?`,
       blocks: []
     })
     return
   }
+
+  // If this isn't an open game and the user is not a player, ignore
+  if (game.cfg.mode !== 'open' && game.cfg.user !== body.user.id) return
 
   switch (actionId) {
     case 'btn_left':

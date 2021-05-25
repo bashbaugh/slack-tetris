@@ -16,12 +16,12 @@ const SCORE_TABLE = {
 
 const LEVELS: [scoreThreshold: number, intervalDuration: number][] = [
   [0, 1600],
-  [100, 1400],
-  [300, 1000],
-  [1500, 800],
-  [3000, 600],
-  [6000, 400],
-  [10000, 200],
+  [40, 1200],
+  [200, 1000],
+  [500, 800],
+  [1000, 600],
+  [1500, 400],
+  [3000, 200],
 ]
 
 export type TetrominoName = 'I' | 'J' | 'L' | 'S' | 'Z' | 'T' | 'O'
@@ -72,28 +72,32 @@ const getTetromino = (type: TetrominoName, rotation: Rotation): Omit<Tetromino, 
   }
 }
 
+export type GameMode = 'open' | '1p' | '2p'
+
 interface NewGameConfig {
   channel: string,
-  user: string
+  user: string,
+  mode?: GameMode
 }
 
 export class Game {
   cfg: NewGameConfig
   ts: string
-  tetrominos: Tetromino[] // Array of pieces on grid. Current piece is last.
-  nextPieces: TetrominoName[] // New tetrominos to place
+  private tetrominos: Tetromino[] // Array of pieces on grid. Current piece is last.
+  private nextPieces: TetrominoName[] // New tetrominos to place
   // client: WebClient
-  loopInterval: NodeJS.Timeout
+  private loopInterval: NodeJS.Timeout
   startedAt: number
   endedAt: number
   score: number
   gameOver: boolean
-  lastLevel: number
+  private lastLevel: number
 
   constructor (cfg: NewGameConfig) { 
     this.tetrominos = []
     this.nextPieces = []
     this.cfg = cfg
+    if (!this.cfg.mode) this.cfg.mode = 'open'
     this.score = 0
   }
 
@@ -139,6 +143,7 @@ export class Game {
   private update() {
     updateGame(this.cfg.channel, this.ts, {
       startedBy: this.cfg.user,
+      mode: this.cfg.mode,
       blocks: this.renderBlockGrid().reverse(), // Render top-side up!,
       score: this.score,
       gameOver: this.gameOver,
@@ -211,7 +216,7 @@ export class Game {
       // A filled spot is going below the grid; this is invalid:
       if (block && piece.position[0] + i < 0) return true
       // A filled spot is passing the walls:
-      if (block && piece.position[1] + j < 0 || piece.position[1] + j > GRID_WIDTH - 1) return true
+      if (block && (piece.position[1] + j < 0 || piece.position[1] + j > GRID_WIDTH - 1)) return true
       // If the shape wants to fill a cell that's already filled on the grid, there's a conflict:
       if (block && grid[piece.position[0] + i][piece.position[1] + j]) return true
     })

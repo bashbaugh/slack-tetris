@@ -1,4 +1,4 @@
-import { TetrominoName } from './game'
+import { GameMode, TetrominoName } from './game'
 import { bot } from '.'
 import { formatMilliseconds } from './util'
 import humanizeDuration from 'humanize-duration'
@@ -46,6 +46,7 @@ const renderBlockGrid = (blocks: TetrisBlocksGrid) =>
 
 export interface GameMessageData {
   startedBy: string // user ID
+  mode: GameMode
   blocks?: TetrisBlocksGrid
   nextPiece?: TetrominoName
   score: number
@@ -65,7 +66,7 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
         "type": "mrkdwn",
         "text": game.gameOver 
           ? `<@${game.startedBy}> played Tetris for ${humanizeDuration(game.duration)}. Final score: *${game.score}*` 
-          : `<@${game.startedBy}> is playing. Score: *${game.score}* | ${formatMilliseconds(game.duration)}${nextPieceText}`
+          : `<@${game.startedBy}> is playing in ${game.mode} mode. Score: *${game.score}* | ${formatMilliseconds(game.duration)}${nextPieceText}`
       }
     },
     {
