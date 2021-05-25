@@ -1,7 +1,6 @@
 import { GameMode, TetrominoName } from './game'
 import { bot } from '.'
 import { formatMilliseconds } from './util'
-import humanizeDuration from 'humanize-duration'
 
 const BLOCK_EMOJI: Record<TetrominoName, string> = {
   Z: ':tetris-block-z:', // red
@@ -44,6 +43,7 @@ export type TetrisBlocksGrid = (TetrominoName | null)[][]
 const renderBlockGrid = (blocks: TetrisBlocksGrid) => 
   blocks.reduce((str, line) => str + '\n' + WALL_LEFT + line.map(b => b ? BLOCK_EMOJI[b] : BLANK_EMOJI).join('') + WALL_RIGHT, '') + INVISIBLE_CHARACTER
 
+// TODO render level too
 export interface GameMessageData {
   startedBy: string // user ID
   mode: GameMode
@@ -65,7 +65,7 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
       "text": {
         "type": "mrkdwn",
         "text": game.gameOver 
-          ? `<@${game.startedBy}> played Tetris for ${humanizeDuration(game.duration)}. Final score: *${game.score}*` 
+          ? `<@${game.startedBy}> played Tetris for ${formatMilliseconds(game.duration, true)}. Final score: *${game.score}*` 
           : `<@${game.startedBy}> is playing in ${game.mode} mode. Score: *${game.score}* | ${formatMilliseconds(game.duration)}${nextPieceText}`
       }
     },

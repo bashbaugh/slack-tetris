@@ -11,7 +11,8 @@ const SCORE_TABLE = {
     2: 100,
     3: 300,
     4: 1200
-  }
+  },
+  pointsPerLineSkipped: 1
 }
 
 const LEVELS: [scoreThreshold: number, intervalDuration: number][] = [
@@ -35,6 +36,7 @@ interface Tetromino {
   position: [y: number, x: number] // dist from bottom, left of grid to bottom, left of tetrimino shape
   rotation: Rotation
   shape: boolean[][] // 2d MxM matrix
+  levelFinalized
 }
 
 // - = blank space, # = fill, , = new row
@@ -90,6 +92,7 @@ export class Game {
   startedAt: number
   endedAt: number
   score: number
+  bonusPoints: number // Points from dropping blocks early, etc.
   gameOver: boolean
   private lastLevel: number
 
@@ -99,6 +102,7 @@ export class Game {
     this.cfg = cfg
     if (!this.cfg.mode) this.cfg.mode = 'open'
     this.score = 0
+    this.bonusPoints = 0
   }
 
   /** Creates the game message and starts the loop */
@@ -115,7 +119,7 @@ export class Game {
     return this.ts
   }
 
-  /** Moves active piece down one square, adds new pieces, checks for game over, etc. */
+  /** Moves active piece down one square, adds new pieces, etc. */
   private loop () {
     if (!this.tetrominos.length) {
       this.addPiece()
@@ -136,6 +140,8 @@ export class Game {
       this.loopInterval = setInterval(() => this.loop(), LEVELS[this.level][1])
     }
 
+    this.lastLevel = this.level
+
     this.update()
   }
 
@@ -153,37 +159,44 @@ export class Game {
   }
 
   /** Converts the tetromino array into a 2d matrix of piece types; and recomputes the score */
-  private renderBlockGrid (tetriminos?: Tetromino[]): TetrisBlocksGrid {
+  private renderBlockGrid (): TetrisBlocksGrid {
     const grid: TetrisBlocksGrid = new Array(GRID_HEIGHT).fill(null).map(_ => new Array(GRID_WIDTH).fill(null))
 
     this.score = 0
 
-    for (const piece of tetriminos || this.tetrominos) {
+    for (const [pieceIndex, piece] of this.tetrominos.entries()) {
+      const rowsThisPieceFills = []
+      const isActiveTetromino = this.tetrominos.length - 1 === pieceIndex
+
       // Check which cells this shape fills and fill the corresponding cells on the grid:
       iterateMatrix(piece.shape, (block, i, j) => {
         if (block) {
+          rowsThisPieceFills.push(piece.position[0] + i)
           grid[piece.position[0] + i][piece.position[1] + j] = piece.type
         }
       })
 
       let lineClears = 0
-      for (const [i, row] of grid.entries()) {
+      for (const [rowIndex, row] of grid.entries()) {
         const lineClear = row.find(b => !b) === undefined // zero null places
-        if (lineClear) {
-          grid.splice(i, 1) // Remove cleared row
+        
+        if (lineClear && (!isActiveTetromino || !rowsThisPieceFills.includes(rowIndex))) {
+          grid.splice(rowIndex, 1) // Remove cleared row
           grid.push(new Array(GRID_WIDTH).fill(null)) // Add new empty row at top
           lineClears++
         }
       }
 
-      this.score += (SCORE_TABLE.lineClears[lineClears] || 0) * this.level
+      this.score += (SCORE_TABLE.lineClears[lineClears] || 0) * this.lastLevel
     }
+
+    this.score += this.bonusPoints // Include bonus points earned over course of game
 
     return grid // Render top-side up!
   }
 
   public get level (): number {
-    return LEVELS.reduce((lvl, [threshold]) => lvl += this.score > Number(threshold) ? 1 : 0, 0)
+    return LEVELS.reduce((lvl, [threshold]) => lvl += this.score >= Number(threshold) ? 1 : 0, 0)
   }
 
   /** Creates a new active piece and spawns it at the top */
@@ -192,6 +205,8 @@ export class Game {
       const newSet = shuffleArray(Object.keys(TETROMINO_SHAPES) as TetrominoName[])
       this.nextPieces = this.nextPieces.concat(newSet)
     }
+
+    // 
 
     const nextPieceType = this.nextPieces.shift()
     const nextPiece: Tetromino = {
@@ -265,6 +280,8 @@ export class Game {
         ...piece,
         position: [piece.position[0] - 1, piece.position[1]]
       }), true)
+
+      if (continueMovingDown) this.bonusPoints += SCORE_TABLE.pointsPerLineSkipped * this.level
     }
     this.update()
   }
