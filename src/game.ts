@@ -171,7 +171,7 @@ export class Game {
         }
       }
 
-      this.score += (SCORE_TABLE.lineClears[lineClears] || 0) * this.level
+      this.score += (SCORE_TABLE.lineClears[lineClears] || 0) * (this.level + 1)
     }
 
     return grid // Render top-side up!
