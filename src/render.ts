@@ -1,5 +1,6 @@
 import { TetrominoName } from './game'
 import { bot } from '.'
+import { formatMilliseconds } from './util'
 import humanizeDuration from 'humanize-duration'
 
 const BLOCK_EMOJI: Record<TetrominoName, string> = {
@@ -48,7 +49,7 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
         "type": "mrkdwn",
         "text": game.gameOver 
           ? `<@${game.startedBy}> played Tetris for ${humanizeDuration(game.duration)}. Final score: *${game.score}*` 
-          : `<@${game.startedBy}> is playing. Score: *${game.score}* | ${humanizeDuration(game.duration)}`
+          : `<@${game.startedBy}> is playing. Score: *${game.score}* | ${formatMilliseconds(game.duration)}`
       }
     },
     {

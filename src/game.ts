@@ -5,6 +5,15 @@ import cloneDeep from 'clone-deep'
 const GRID_WIDTH = 11
 const GRID_HEIGHT = 16
 
+const SCORE_TABLE = {
+  lineClears: {
+    1: 40,
+    2: 100,
+    3: 300,
+    4: 1200
+  }
+}
+
 export type TetrominoName = 'I' | 'J' | 'L' | 'S' | 'Z' | 'T' | 'O'
 
 // 0 is standard position as seen here <https://en.wikipedia.org/wiki/Tetromino#/media/File:Tetrominoes_with_Checkerboard_Squares.svg>
@@ -17,7 +26,6 @@ interface Tetromino {
   rotation: Rotation
   shape: boolean[][] // 2d MxM matrix
 }
-
 
 // - = blank space, # = fill, , = new row
 // All shapes are represented by a 3x3 matrix, except I and O
@@ -132,9 +140,12 @@ export class Game {
     })
   }
 
-  /** Converts the tetromino array into a 2d matrix of piece types */
+  /** Converts the tetromino array into a 2d matrix of piece types; and recomputes the score */
   private renderBlockGrid (tetriminos?: Tetromino[]): TetrisBlocksGrid {
     const grid: TetrisBlocksGrid = new Array(GRID_HEIGHT).fill(null).map(_ => new Array(GRID_WIDTH).fill(null))
+
+    this.score = 0
+    let totalLineClears = 0
 
     for (const piece of tetriminos || this.tetrominos) {
       // Check which cells this shape fills and fill the corresponding cells on the grid:
@@ -143,12 +154,21 @@ export class Game {
           grid[piece.position[0] + i][piece.position[1] + j] = piece.type
         }
       })
-    }
 
-    for (const [i, row] of grid.entries()) {
-      const lineClear = row.find(b => !b) === undefined
-      
-    
+      let lineClears = 0
+      for (const [i, row] of grid.entries()) {
+        const lineClear = row.find(b => !b) === undefined // zero null places
+        if (lineClear) {
+          grid.splice(i, 1) // Remove cleared row
+          lineClears++
+        }
+      }
+
+      const lineClearsFromThisPiece = lineClears - totalLineClears
+
+      this.score += (SCORE_TABLE.lineClears[lineClearsFromThisPiece] || 0) * this.level
+
+      totalLineClears = lineClears
     }
 
     return grid // Render top-side up!
