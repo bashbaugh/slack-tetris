@@ -10,6 +10,7 @@ const BLOCK_EMOJI: Record<TetrominoName, string> = {
   L: ':tetris-block-l:', // orange
   O: ':tetris-block-o:', // yellow
   T: ':tetris-block-t:', // purple
+  FILL: ':tetris-block-gray:',
 }
 
 const TETROMINO_EMOJI: Record<TetrominoName, string> = {

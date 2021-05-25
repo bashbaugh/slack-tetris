@@ -25,23 +25,34 @@ const LEVELS: [scoreThreshold: number, intervalDuration: number][] = [
   [3000, 200],
 ]
 
-export type TetrominoName = 'I' | 'J' | 'L' | 'S' | 'Z' | 'T' | 'O'
+export type TetrominoName = 'I' | 'J' | 'L' | 'S' | 'Z' | 'T' | 'O' | 'FILL'
 
 // 0 is standard position as seen here <https://en.wikipedia.org/wiki/Tetromino#/media/File:Tetrominoes_with_Checkerboard_Squares.svg>
 // 1 is rotated 90 degrees clockwise, 2 is 180, etc.
 type Rotation = 0 | 1 | 2 | 3
 
 interface Tetromino {
-  type: TetrominoName
+  type: 'tetromino'
+  name: TetrominoName
   position: [y: number, x: number] // dist from bottom, left of grid to bottom, left of tetrimino shape
   rotation: Rotation
   shape: boolean[][] // 2d MxM matrix
-  levelFinalized
 }
+
+interface LineClear {
+  type: 'clear'
+  row: number
+}
+
+interface LineFill {
+  type: 'fill'
+}
+
+type Piece = Tetromino | LineClear | LineFill
 
 // - = blank space, # = fill, , = new row
 // All shapes are represented by a 3x3 matrix, except I and O
-const TETROMINO_SHAPES: Record<TetrominoName, string> = {
+const TETROMINO_SHAPES: Record<Exclude<TetrominoName, 'FILL'>, string> = {
   I: '--#-,--#-,--#-,--#-',
   O: '##,##',
   T: '---,###,-#-',
@@ -68,7 +79,8 @@ const getTetromino = (type: TetrominoName, rotation: Rotation): Omit<Tetromino, 
   shape = shape.reverse()
 
   return {
-    type,
+    type: 'tetromino',
+    name: type,
     rotation,
     shape
   }
@@ -85,9 +97,8 @@ interface NewGameConfig {
 export class Game {
   cfg: NewGameConfig
   ts: string
-  private tetrominos: Tetromino[] // Array of pieces on grid. Current piece is last.
-  private nextPieces: TetrominoName[] // New tetrominos to place
-  // client: WebClient
+  private pieces: Piece[] // Array of pieces and other events such as line clears. Current piece is last.
+  private nextTetrominoes: TetrominoName[] // New tetrominos to place
   private loopInterval: NodeJS.Timeout
   startedAt: number
   endedAt: number
@@ -97,8 +108,8 @@ export class Game {
   private lastLevel: number
 
   constructor (cfg: NewGameConfig) { 
-    this.tetrominos = []
-    this.nextPieces = []
+    this.pieces = []
+    this.nextTetrominoes = []
     this.cfg = cfg
     if (!this.cfg.mode) this.cfg.mode = 'open'
     this.score = 0
@@ -121,7 +132,7 @@ export class Game {
 
   /** Moves active piece down one square, adds new pieces, etc. */
   private loop () {
-    if (!this.tetrominos.length) {
+    if (!this.pieces.length) {
       this.addPiece()
     } else {
       const didMoveDown = this.modifyActivePiece(piece => ({
@@ -154,7 +165,7 @@ export class Game {
       score: this.score,
       gameOver: this.gameOver,
       duration: (this.endedAt || new Date().getTime()) - this.startedAt,
-      nextPiece: this.nextPieces[0]
+      nextPiece: this.nextTetrominoes[0]
     })
   }
 
@@ -164,17 +175,30 @@ export class Game {
 
     this.score = 0
 
-    for (const [pieceIndex, piece] of this.tetrominos.entries()) {
+    for (const [pieceIndex, piece] of this.pieces.entries()) {
       const rowsThisPieceFills = []
-      const isActiveTetromino = this.tetrominos.length - 1 === pieceIndex
+      const isActiveTetromino = this.pieces.length - 1 === pieceIndex
 
       // Check which cells this shape fills and fill the corresponding cells on the grid:
-      iterateMatrix(piece.shape, (block, i, j) => {
-        if (block) {
-          rowsThisPieceFills.push(piece.position[0] + i)
-          grid[piece.position[0] + i][piece.position[1] + j] = piece.type
-        }
-      })
+      if (piece.type === 'tetromino') {
+        iterateMatrix(piece.shape, (block, i, j) => {
+          if (block) {
+            rowsThisPieceFills.push(piece.position[0] + i)
+            grid[piece.position[0] + i][piece.position[1] + j] = piece.name
+          }
+        })
+      } 
+
+      if (piece.type === 'clear') {
+        grid.splice(piece.row, 1) // Remove cleared row
+        grid.push(new Array(GRID_WIDTH).fill(null)) // Add new empty row at top
+      }
+
+      if (piece.type === 'fill') {
+        grid.pop() // Remove cleared row
+        grid.unshift(new Array(GRID_WIDTH).fill('FILL')) // Add new empty row at top
+      }
+
 
       let lineClears = 0
       for (const [rowIndex, row] of grid.entries()) {
@@ -201,14 +225,12 @@ export class Game {
 
   /** Creates a new active piece and spawns it at the top */
   private addPiece () {
-    if (this.nextPieces.length < 2) { // Running out of new pieces; add 7 more
+    if (this.nextTetrominoes.length < 2) { // Running out of new pieces; add 7 more
       const newSet = shuffleArray(Object.keys(TETROMINO_SHAPES) as TetrominoName[])
-      this.nextPieces = this.nextPieces.concat(newSet)
+      this.nextTetrominoes = this.nextTetrominoes.concat(newSet)
     }
 
-    // 
-
-    const nextPieceType = this.nextPieces.shift()
+    const nextPieceType = this.nextTetrominoes.shift()
     const nextPiece: Tetromino = {
       ...getTetromino(nextPieceType, 0),
       position: [GRID_HEIGHT - 4, Math.ceil(GRID_WIDTH / 2) - 2]
@@ -219,7 +241,12 @@ export class Game {
       return
     }
 
-    this.tetrominos.push(nextPiece)
+    this.pieces.push(nextPiece)
+  }
+
+  /**  */
+  private updateScore () {
+
   }
 
   /** Checks the position of a piece to make sure it doens't overlap with another piece, or the walls */
@@ -241,15 +268,15 @@ export class Game {
 
   /** Accepts a cb fn which is used to edit the piece; then checks validity of the new position and rejects it if it's invalid */
   private modifyActivePiece (getNewPiece: (piece: Tetromino) => Tetromino, skipUpdate?: boolean) {
-    const oldPiece = this.tetrominos.pop()
+    const oldPiece = this.pieces.pop()
     const newPiece = getNewPiece(cloneDeep(oldPiece))
 
     if (this.isValidPosition(newPiece)) {
-      this.tetrominos.push(newPiece)
+      this.pieces.push(newPiece)
       if (!skipUpdate) this.update()
       return true
     }
-    else this.tetrominos.push(oldPiece) // Ignore the move if it's not valid
+    else this.pieces.push(oldPiece) // Ignore the move if it's not valid
     return false
   }
 
@@ -257,7 +284,7 @@ export class Game {
   public rotatePiece () {
     this.modifyActivePiece(piece => ({
       ...piece,
-      ...getTetromino(piece.type, piece.rotation === 3 ? 0 : piece.rotation + 1 as Rotation)
+      ...getTetromino(piece.name, piece.rotation === 3 ? 0 : piece.rotation + 1 as Rotation)
     }))
   }
 
