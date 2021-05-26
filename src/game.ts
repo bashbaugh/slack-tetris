@@ -12,20 +12,22 @@ const SCORE_TABLE = {
     3: 300,
     4: 1200
   },
-  pointsPerLineSkipped: 1
+  pointsPerRowSkipped: 1
 }
 
+// Ex: after a score of 40, there will be a 1200ms delay between loops
 const LEVELS: [scoreThreshold: number, intervalDuration: number][] = [
   [0, 1600],
   [40, 1200],
   [200, 1000],
-  [500, 800],
-  [1000, 600],
-  [1500, 400],
-  [3000, 200],
+  [600, 800],
+  [2000, 600],
+  [20000, 400],
+  [50000, 200],
+  [500000, 50],
 ]
 
-export type TetrominoName = 'I' | 'J' | 'L' | 'S' | 'Z' | 'T' | 'O' | 'FILL'
+export type TetrominoName = 'I' | 'J' | 'L' | 'S' | 'Z' | 'T' | 'O'
 
 // 0 is standard position as seen here <https://en.wikipedia.org/wiki/Tetromino#/media/File:Tetrominoes_with_Checkerboard_Squares.svg>
 // 1 is rotated 90 degrees clockwise, 2 is 180, etc.
@@ -88,7 +90,7 @@ const getTetromino = (type: TetrominoName, rotation: Rotation): Omit<Tetromino, 
 
 export type GameMode = 'open' | '1p' | '2p'
 
-interface NewGameConfig {
+export interface NewGameConfig {
   channel: string,
   user: string,
   mode?: GameMode
@@ -97,13 +99,16 @@ interface NewGameConfig {
 export class Game {
   cfg: NewGameConfig
   ts: string
+
   private pieces: Piece[] // Array of pieces and other events such as line clears. Current piece is last.
+  private activePiece: Tetromino
   private nextTetrominoes: TetrominoName[] // New tetrominos to place
+  
   private loopInterval: NodeJS.Timeout
+
   startedAt: number
   endedAt: number
   score: number
-  bonusPoints: number // Points from dropping blocks early, etc.
   gameOver: boolean
   private lastLevel: number
 
@@ -113,7 +118,6 @@ export class Game {
     this.cfg = cfg
     if (!this.cfg.mode) this.cfg.mode = 'open'
     this.score = 0
-    this.bonusPoints = 0
   }
 
   /** Creates the game message and starts the loop */
@@ -132,16 +136,17 @@ export class Game {
 
   /** Moves active piece down one square, adds new pieces, etc. */
   private loop () {
-    if (!this.pieces.length) {
+    if (!this.activePiece) {
       this.addPiece()
     } else {
-      const didMoveDown = this.modifyActivePiece(piece => ({
+      const didMoveDown = this.updateActivePiece(piece => ({
         ...piece,
         position: [piece.position[0] - 1, piece.position[1]]
-      }))
+      }), true)
 
-      if (!didMoveDown) { // Can't move down any further; finalize move and add a new piece
-        this.addPiece()
+      if (!didMoveDown) { // Can't move down any further: finalize move, update score, and add a new piece
+        this.addPiece() // Must finalize move first so that it can be properly cleared
+        this.clearLinesAndUpdateScore()
       }
     }
 
@@ -161,21 +166,22 @@ export class Game {
     updateGame(this.cfg.channel, this.ts, {
       startedBy: this.cfg.user,
       mode: this.cfg.mode,
-      blocks: this.renderBlockGrid().reverse(), // Render top-side up!,
+      blocks: this.renderBlockGrid(true).reverse(), // Render top-side up!,
       score: this.score,
+      level: this.level,
       gameOver: this.gameOver,
       duration: (this.endedAt || new Date().getTime()) - this.startedAt,
       nextPiece: this.nextTetrominoes[0]
     })
   }
 
-  /** Converts the tetromino array into a 2d matrix of piece types; and recomputes the score */
-  private renderBlockGrid (): TetrisBlocksGrid {
+  /** Converts the tetromino array into a 2d matrix of piece types.  */
+  private renderBlockGrid (includeActive = true): TetrisBlocksGrid {
     const grid: TetrisBlocksGrid = new Array(GRID_HEIGHT).fill(null).map(_ => new Array(GRID_WIDTH).fill(null))
 
-    this.score = 0
+    const pieces = this.pieces.concat(includeActive && this.activePiece ? [this.activePiece] : [])
 
-    for (const [pieceIndex, piece] of this.pieces.entries()) {
+    for (const [pieceIndex, piece] of pieces.entries()) {
       const rowsThisPieceFills = []
       const isActiveTetromino = this.pieces.length - 1 === pieceIndex
 
@@ -195,30 +201,15 @@ export class Game {
       }
 
       if (piece.type === 'fill') {
-        grid.pop() // Remove cleared row
-        grid.unshift(new Array(GRID_WIDTH).fill('FILL')) // Add new empty row at top
+        grid.pop() // Remove row at top
+        grid.unshift(new Array(GRID_WIDTH).fill('FILL')) // Add new filled row at bottom
       }
-
-
-      let lineClears = 0
-      for (const [rowIndex, row] of grid.entries()) {
-        const lineClear = row.find(b => !b) === undefined // zero null places
-        
-        if (lineClear && (!isActiveTetromino || !rowsThisPieceFills.includes(rowIndex))) {
-          grid.splice(rowIndex, 1) // Remove cleared row
-          grid.push(new Array(GRID_WIDTH).fill(null)) // Add new empty row at top
-          lineClears++
-        }
-      }
-
-      this.score += (SCORE_TABLE.lineClears[lineClears] || 0) * this.lastLevel
     }
 
-    this.score += this.bonusPoints // Include bonus points earned over course of game
-
-    return grid // Render top-side up!
+    return grid
   }
 
+  /** Get level, computed from current score */
   public get level (): number {
     return LEVELS.reduce((lvl, [threshold]) => lvl += this.score >= Number(threshold) ? 1 : 0, 0)
   }
@@ -231,28 +222,41 @@ export class Game {
     }
 
     const nextPieceType = this.nextTetrominoes.shift()
-    const nextPiece: Tetromino = {
-      ...getTetromino(nextPieceType, 0),
-      position: [GRID_HEIGHT - 4, Math.ceil(GRID_WIDTH / 2) - 2]
-    }
+    const nextPiece = getTetromino(nextPieceType, 0) as Tetromino
+    nextPiece.position = [GRID_HEIGHT - nextPiece.shape.length, Math.ceil(GRID_WIDTH / 2) - 2]
 
     if (!this.isValidPosition(nextPiece)) { // Can't place any more pieces; game over!
       this.endGame()
       return
     }
 
-    this.pieces.push(nextPiece)
+    if (this.activePiece) this.pieces.push(this.activePiece)
+    this.activePiece = nextPiece
   }
 
-  /**  */
-  private updateScore () {
+  /** Checks for line clears and increases the score if needed */
+  private clearLinesAndUpdateScore () {
+    const grid = this.renderBlockGrid(false)
 
+    const lineClears = grid.reduce((fullRows, row, rowIndex) => {
+      const rowFull = row.find(b => !b) === undefined // No empty places found
+      const cleared = rowFull && row[0] !== 'FILL' // Filled rows don't count
+
+      // The user has cleared this row!!!
+      if (cleared) this.pieces.push({
+        type: 'clear',
+        row: rowIndex
+      })
+
+      return fullRows + (cleared ? 1 : 0)
+    }, 0)
+
+    this.score += (SCORE_TABLE.lineClears[lineClears] || 0) * this.lastLevel
   }
 
   /** Checks the position of a piece to make sure it doens't overlap with another piece, or the walls */
   private isValidPosition (piece: Tetromino): boolean {
-    const grid = this.renderBlockGrid() // Grid of existing pieces
-    const shapeSize = piece.shape.length
+    const grid = this.renderBlockGrid(false) // Grid of pieces, excluding active piece
 
     const foundConflict = iterateMatrix(piece.shape, (block, i, j) => {
       // A filled spot is going below the grid; this is invalid:
@@ -267,22 +271,20 @@ export class Game {
   }
 
   /** Accepts a cb fn which is used to edit the piece; then checks validity of the new position and rejects it if it's invalid */
-  private modifyActivePiece (getNewPiece: (piece: Tetromino) => Tetromino, skipUpdate?: boolean) {
-    const oldPiece = this.pieces.pop()
-    const newPiece = getNewPiece(cloneDeep(oldPiece))
+  private updateActivePiece (getNewPiece: (piece: Tetromino) => Tetromino, skipUpdate?: boolean) {
+    const newPiece = getNewPiece(cloneDeep(this.activePiece))
 
     if (this.isValidPosition(newPiece)) {
-      this.pieces.push(newPiece)
+      this.activePiece = newPiece
       if (!skipUpdate) this.update()
       return true
     }
-    else this.pieces.push(oldPiece) // Ignore the move if it's not valid
-    return false
+    return false // Ignore the move if it's not valid
   }
 
   /** Rotates active piece clockwise */
   public rotatePiece () {
-    this.modifyActivePiece(piece => ({
+    this.updateActivePiece(piece => ({
       ...piece,
       ...getTetromino(piece.name, piece.rotation === 3 ? 0 : piece.rotation + 1 as Rotation)
     }))
@@ -290,7 +292,7 @@ export class Game {
 
   /** Moves the active piece left/right */
   public movePiece(direction: 'left' | 'right') {
-    this.modifyActivePiece(piece => {
+    this.updateActivePiece(piece => {
       const newX = direction === 'left' ? piece.position[1] - 1 : piece.position[1] + 1
       return {
         ...piece,
@@ -303,12 +305,12 @@ export class Game {
   public dropPiece() {
     let continueMovingDown = true
     while (continueMovingDown) {
-      continueMovingDown = this.modifyActivePiece(piece => ({
+      continueMovingDown = this.updateActivePiece(piece => ({
         ...piece,
         position: [piece.position[0] - 1, piece.position[1]]
       }), true)
 
-      if (continueMovingDown) this.bonusPoints += SCORE_TABLE.pointsPerLineSkipped * this.level
+      if (continueMovingDown) this.score += SCORE_TABLE.pointsPerRowSkipped * this.level
     }
     this.update()
   }

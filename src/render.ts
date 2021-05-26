@@ -2,7 +2,7 @@ import { GameMode, TetrominoName } from './game'
 import { bot } from '.'
 import { formatMilliseconds } from './util'
 
-const BLOCK_EMOJI: Record<TetrominoName, string> = {
+const BLOCK_EMOJI: Record<TetrominoName | 'FILL', string> = {
   Z: ':tetris-block-z:', // red
   S: ':tetris-block-s:', // green
   J: ':tetris-block-j:', // blue
@@ -37,9 +37,21 @@ const GAME_BUTTONS = {
   'btn_stop': ':tetris-control-stop:'
 }
 
+const SPLASH_TEXT = ` 
+\`\`\`
+ _____   _____   _____   _____    _   _____  
+|_   _| | ____| |_   _| |  _  \\  | | /  ___/ 
+  | |   | |__     | |   | |_| |  | | | |___  
+  | |   |  __|    | |   |  _  /  | | \\___  \\ 
+  | |   | |___    | |   | | \\ \\  | |  ___| | 
+  |_|   |_____|   |_|   |_|  \\_\\ |_| /_____/ 
+\`\`\` 
+
+:parrotwave1: :parrotwave2: :parrotwave3: :parrotwave4: :parrotwave5: :parrotwave6: :parrotwave7:`
+
 export type GameButtonAction = keyof typeof GAME_BUTTONS
 
-export type TetrisBlocksGrid = (TetrominoName | null)[][]
+export type TetrisBlocksGrid = (TetrominoName | 'FILL' | null)[][]
 
 const renderBlockGrid = (blocks: TetrisBlocksGrid) => 
   blocks.reduce((str, line) => str + '\n' + WALL_LEFT + line.map(b => b ? BLOCK_EMOJI[b] : BLANK_EMOJI).join('') + WALL_RIGHT, '') + INVISIBLE_CHARACTER
@@ -51,6 +63,7 @@ export interface GameMessageData {
   blocks?: TetrisBlocksGrid
   nextPiece?: TetrominoName
   score: number
+  level: number
   gameOver: boolean
   duration: number
 }
@@ -67,7 +80,7 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
         "type": "mrkdwn",
         "text": game.gameOver 
           ? `<@${game.startedBy}> played Tetris for ${formatMilliseconds(game.duration, true)}. Final score: *${game.score}*` 
-          : `<@${game.startedBy}> is playing in ${game.mode} mode. Score: *${game.score}* | ${formatMilliseconds(game.duration)}${nextPieceText}`
+          : `<@${game.startedBy}> is playing in ${game.mode} mode. Score: *${game.score}* | ${formatMilliseconds(game.duration)} | Lvl ${game.level} ${nextPieceText}`
       }
     },
     {
@@ -115,23 +128,11 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
   }
 }
 
-const splashText = ` 
-\`\`\`
- _____   _____   _____   _____    _   _____  
-|_   _| | ____| |_   _| |  _  \\  | | /  ___/ 
-  | |   | |__     | |   | |_| |  | | | |___  
-  | |   |  __|    | |   |  _  /  | | \\___  \\ 
-  | |   | |___    | |   | | \\ \\  | |  ___| | 
-  |_|   |_____|   |_|   |_|  \\_\\ |_| /_____/ 
-\`\`\` 
-
-:parrotwave1: :parrotwave2: :parrotwave3: :parrotwave4: :parrotwave5: :parrotwave6: :parrotwave7:`
-
 export async function createGame (channel: string): Promise<string> {
   const msg = await bot.client.chat.postMessage({
     token: process.env.SLACK_BOT_TOKEN,
     channel,
-    text: splashText
+    text: SPLASH_TEXT
   })
 
   return msg.ts
@@ -146,12 +147,81 @@ export async function updateGame (channel: string, ts: string, game: GameMessage
   })
 }
 
-export const mentionBlocks = [
-  {
-    "type": "section",
-    "text": {
-      "type": "mrkdwn",
-      "text": "Hello! Do you want to play Tetris? To start a game, type `/tetris`\n\nSource: https://github.com/scitronboy/slack-tetris"
-    }
-  }
-]
+export async function create2pGameOffer (channel: string, user: string): Promise<string> {
+  const msg = await bot.client.chat.postMessage({
+    token: process.env.SLACK_BOT_TOKEN,
+    channel,
+    text: 'Would you like to play 2-player Tetris?',
+    blocks: [
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": `<@${user}> wants to play two-player Tetris.`
+        },
+        "accessory": {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "Accept Challenge",
+            "emoji": true
+          },
+          "action_id": "join-2p-game"
+        }
+      },
+    ]
+  })
+
+  return msg.ts
+}
+
+export async function update2pGameOffer (channel: string, ts: string, user: string, opponent: string): Promise<string> {
+  const msg = await bot.client.chat.update({
+    token: process.env.SLACK_BOT_TOKEN,
+    channel,
+    ts,
+    blocks: [
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": `<@${user}> is playing two-player Tetris with <@${opponent}>.`
+        }
+      },
+      // {
+      //   "type": "section",
+      //   "text": {
+      //     "type": "mrkdwn",
+      //     "text": "To place a bet on this match, send HN to me with reason `7716`. Players: you will be refunded any bet in excess of the other player's bet."
+      //   }
+      // },
+      {
+        "type": "actions",
+        "elements": [
+          {
+            "type": "button",
+            "text": {
+              "type": "plain_text",
+              "text": "Start Game",
+              "emoji": true
+            },
+            "value": "click_me_123",
+            "action_id": "start-2p-game"
+          }
+        ]
+      }
+    ]
+  })
+
+  return msg.ts
+}
+
+// export const mentionBlocks = [
+//   {
+//     "type": "section",
+//     "text": {
+//       "type": "mrkdwn",
+//       "text": "Hello! Do you want to play Tetris? To start a game, type `/tetris`\n\nSource: https://github.com/scitronboy/slack-tetris"
+//     }
+//   }
+// ]

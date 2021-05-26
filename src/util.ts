@@ -29,6 +29,6 @@ export function formatMilliseconds(ms: number, long?: boolean) {
   const seconds = ms / 1000 % 60
   const secondsRounded = Math.floor(seconds)
   return long
-    ? `${minutes} minutes and ${seconds} seconds`
+    ? `${minutes} minutes and ${secondsRounded} seconds`
     : `${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + secondsRounded : secondsRounded}`
 }

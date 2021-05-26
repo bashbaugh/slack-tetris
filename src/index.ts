@@ -1,7 +1,7 @@
 if (process.env.NODE_ENV !== 'production') require('dotenv').config()
 import { App, ReactionMessageItem } from '@slack/bolt'
-import { Game } from './game'
-import { GameButtonAction, mentionBlocks } from './render'
+import { Game, NewGameConfig } from './game'
+import { create2pGameOffer, GameButtonAction } from './render'
 
 export const bot = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -17,33 +17,28 @@ const games: Record<string, Game> = {}
 //   down = 'arrow_down',
 // }
 
+const startGame = async (cfg: NewGameConfig) => {
+  const game = new Game(cfg)
+  const gameTs = await game.startGame()
+  games[gameTs] = game
+}
+
 bot.command('/tetris', async ({ command, ack, say, client }) => {
   ack()
 
   let mode = command.text
 
-  if (!(mode == '1p' || mode == '2p')) mode = null
+  if (!(mode === '1p' || mode === '2p')) mode = null
 
-  const game = new Game({
+  if (mode === '2p') {
+    create2pGameOffer(command.channel_id, command.user_id)
+  } else startGame({
     channel: command.channel_id,
     user: command.user_id,
     mode: mode as '1p' | '2p'
   })
 
-  const gameTs = await game.startGame()
 
-  games[gameTs] = game
-})
-
-bot.event('app_mention', async ({ event, client }) => {
-  // say() sends a message to the channel where the event was triggered
-  if (event.thread_ts) return
-  client.chat.postEphemeral({
-    channel: event.channel,
-    user: event.user,
-    text: 'Hello',
-    blocks: mentionBlocks
-  })
 })
 
 bot.action(/btn_.+/, async ({ ack, body, client }) => {
@@ -83,22 +78,22 @@ bot.action(/btn_.+/, async ({ ack, body, client }) => {
   }
 })
 
-// function isMsgReaction(item): item is ReactionMessageItem {
-//   return !!item.channel
-// }
+const HELP_TEXT = `Hello! Do you want to play Tetris? To start a game, type \`/tetris\`
 
-// const onReactionAddedOrRemoved = async ({ event, client }) => {
-//   if (!isMsgReaction(event.item)) return
+By default, it will be in open mode, meaning anyone can press the controls and move the pieces, so you'll have to work together. Or, you can type \`/tetris 1p\` to restrict control over the game to just yourself.
 
-//   const ts = event.item.ts
+TODO 2p
 
-//   if (games[ts]) {
-//     console.log(event.reaction)
-//   }
-// }
-
-// bot.event('reaction_added', onReactionAddedOrRemoved)
-// bot.event('reaction_removed', onReactionAddedOrRemoved)
+Source: https://github.com/scitronboy/slack-tetris`
+bot.event('app_mention', async ({ event, client }) => {
+  // say() sends a message to the channel where the event was triggered
+  if (event.thread_ts) return
+  client.chat.postEphemeral({
+    channel: event.channel,
+    user: event.user,
+    text: HELP_TEXT
+  })
+})
 
 async function start() {
   await bot.start(parseInt(process.env.PORT) || 5000)
