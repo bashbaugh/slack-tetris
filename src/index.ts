@@ -1,7 +1,10 @@
 if (process.env.NODE_ENV !== 'production') require('dotenv').config()
 import { App, ReactionMessageItem } from '@slack/bolt'
 import { Game, NewGameConfig } from './game'
-import { create2pGameOffer, GameButtonAction } from './render'
+import { complete2pGameOffer, create2pGameOffer, GameButtonAction, send2pGameEndingAnnouncement, update2pGameOffer } from './render'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 export const bot = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -10,12 +13,8 @@ export const bot = new App({
 
 const games: Record<string, Game> = {}
 
-// enum EmojiControl {
-//   rotate = 'repeat',
-//   left = 'arrow_left',
-//   right = 'arrow_right',
-//   down = 'arrow_down',
-// }
+/** Timestamp, offerer ID */
+const twoPlayerOffers: Record<string, string> = {}
 
 const startGame = async (cfg: NewGameConfig) => {
   const game = new Game(cfg)
@@ -31,7 +30,8 @@ bot.command('/tetris', async ({ command, ack, say, client }) => {
   if (!(mode === '1p' || mode === '2p')) mode = null
 
   if (mode === '2p') {
-    create2pGameOffer(command.channel_id, command.user_id)
+    const offerTs = await create2pGameOffer(command.channel_id, command.user_id)
+    twoPlayerOffers[offerTs] = command.user_id
   } else startGame({
     channel: command.channel_id,
     user: command.user_id,
@@ -52,8 +52,7 @@ bot.action(/btn_.+/, async ({ ack, body, client }) => {
     client.chat.update({
       channel: body.channel.id,
       ts: gameTs,
-      text: `Oh no. My server may have restarted because I don't remeber this game. Start another?`,
-      blocks: []
+      text: `Oh no. My server may have restarted because I don't remeber this game. Start another?`
     })
     return
   }
@@ -77,6 +76,94 @@ bot.action(/btn_.+/, async ({ ack, body, client }) => {
       break
   }
 })
+
+bot.action('join-2p-game', async ({ ack, body, client }) => {
+  ack()
+  
+  const offerTs: string = (body as any).message.ts
+  const offer_user = twoPlayerOffers[offerTs]
+  if (!offer_user) {
+    client.chat.update({
+      channel: body.channel.id,
+      ts: offerTs,
+      text: `Something went wrong, please create a new offer with \`/tetris 2p\``
+    })
+    return
+  }
+
+  const game = await prisma.twoPlayerGame.create({
+    data: {
+      offerTs,
+      channel: body.channel.id,
+      user: offer_user,
+      opponent: body.user.id,
+    }
+  })
+
+  update2pGameOffer(body.channel.id, offerTs, offer_user, body.user.id, game.id.toString())
+})
+
+bot.action('start-2p-game', async ({ ack, body, client }) => {
+  ack()
+  
+  const offerTs: string = (body as any).message.ts
+  
+  const game = await prisma.twoPlayerGame.findFirst({
+    where: {
+      offerTs
+    }
+  })
+
+  if (!game) {
+    client.chat.update({
+      channel: body.channel.id,
+      ts: offerTs,
+      text: `Something went wrong, please create a new offer with \`/tetris 2p\``
+    })
+    return
+  }
+
+  const gameCfg: Omit<NewGameConfig, 'user'> = {
+    channel: body.channel.id,
+    mode: '2p',
+    startDelay: 5000,
+    id: game.id.toString()
+  }
+
+  // Start a game for each player
+  startGame({
+    ...gameCfg,
+    user: game.user,
+  })
+  startGame({
+    ...gameCfg,
+    user: game.opponent,
+  })
+
+  complete2pGameOffer(body.channel.id, offerTs, game.user, game.opponent)
+})
+
+// Hooked by game class on game end
+export async function on2pGameEnd(idStr: string, user: string) {
+  const id = parseInt(idStr)
+  const game = await prisma.twoPlayerGame.findFirst({
+    where: { id }
+  })
+  if (!game || game.winner) return
+
+  // First player to finish loses
+  const winner = game.user === user ? game.opponent : game.user
+
+  await prisma.twoPlayerGame.update({
+    where: { id },
+    data: {
+      winner
+    }
+  })
+
+  send2pGameEndingAnnouncement(game.channel, winner, user)
+  complete2pGameOffer(game.channel, game.offerTs, game.user, game.opponent, winner)
+}
 
 const HELP_TEXT = `Hello! Do you want to play Tetris? To start a game, type \`/tetris\`
 

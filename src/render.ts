@@ -1,6 +1,6 @@
 import { GameMode, TetrominoName } from './game'
 import { bot } from '.'
-import { formatMilliseconds } from './util'
+import { formatMilliseconds, pickRandom } from './util'
 
 const BLOCK_EMOJI: Record<TetrominoName | 'FILL', string> = {
   Z: ':tetris-block-z:', // red
@@ -66,6 +66,7 @@ export interface GameMessageData {
   level: number
   gameOver: boolean
   duration: number
+  startingIn?: number
 }
 
 function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } {
@@ -95,7 +96,20 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
     },
   ]
 
-  if (!game.gameOver) {
+  if (game.startingIn) {
+    blocks.push(
+      {
+        "type": "divider"
+      }, {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": `Starting in about ${game.startingIn / 1000} seconds.`
+        }
+      }
+    )
+  }
+  else if (!game.gameOver) {
     blocks.push({
       "type": "actions",
       "elements": Object.entries(GAME_BUTTONS).map(([action_id, text]) => ({
@@ -128,10 +142,11 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
   }
 }
 
-export async function createGame (channel: string): Promise<string> {
+export async function createGame (channel: string, thread_ts?: string): Promise<string> {
   const msg = await bot.client.chat.postMessage({
     token: process.env.SLACK_BOT_TOKEN,
     channel,
+    thread_ts,
     text: SPLASH_TEXT
   })
 
@@ -175,26 +190,27 @@ export async function create2pGameOffer (channel: string, user: string): Promise
   return msg.ts
 }
 
-export async function update2pGameOffer (channel: string, ts: string, user: string, opponent: string): Promise<string> {
+export async function update2pGameOffer (channel: string, ts: string, user: string, opponent: string, bettingId: string) {
   const msg = await bot.client.chat.update({
     token: process.env.SLACK_BOT_TOKEN,
     channel,
     ts,
+    text: 'Two-player Tetris offer accepted',
     blocks: [
       {
         "type": "section",
         "text": {
           "type": "mrkdwn",
-          "text": `<@${user}> is playing two-player Tetris with <@${opponent}>.`
+          "text": `<@${user}> (player 1) is playing against <@${opponent}> (player 2).`
         }
       },
-      // {
-      //   "type": "section",
-      //   "text": {
-      //     "type": "mrkdwn",
-      //     "text": "To place a bet on this match, send HN to me with reason `7716`. Players: you will be refunded any bet in excess of the other player's bet."
-      //   }
-      // },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": `To place a bet on this match, send HN to me with reason \`${bettingId}-PLAYER\` (replace PLAYER with \`1\` or \`2\`). Players: you can only bet on yourself, and can win a maximum of 2x your own bet. You will be refunded any amount bet in excess of your opponent's bet, so agree beforehand on the amount to bet.`
+        }
+      },
       {
         "type": "actions",
         "elements": [
@@ -205,23 +221,69 @@ export async function update2pGameOffer (channel: string, ts: string, user: stri
               "text": "Start Game",
               "emoji": true
             },
-            "value": "click_me_123",
             "action_id": "start-2p-game"
           }
         ]
       }
     ]
   })
-
-  return msg.ts
 }
 
-// export const mentionBlocks = [
-//   {
-//     "type": "section",
-//     "text": {
-//       "type": "mrkdwn",
-//       "text": "Hello! Do you want to play Tetris? To start a game, type `/tetris`\n\nSource: https://github.com/scitronboy/slack-tetris"
-//     }
-//   }
-// ]
+const GAME_DESCRIPTION_WORDS = [
+  'EPIC',
+  'UNBELIEVABLE',
+  'MINDBLOWING',
+  'cowful',
+  'cool',
+  'SHOCKING',
+  'UNMISSABLE'
+]
+
+const GAME_WINNER_VERB = [
+  'beat',
+  'destroyed',
+  'absolutely shattered',
+  'WHACCCKKKEED'
+]
+
+export async function complete2pGameOffer (channel: string, ts: string, user: string, opponent: string, winner?: string) {
+  const winnerOpponent = winner && (user === winner ? opponent : user)
+  const text = winner
+    ? `<@${winner}> ${pickRandom(GAME_WINNER_VERB)} <@${winnerOpponent}> in a Tetris game!`
+    : `<@${user}> is playing against <@${opponent}> in a totally ${pickRandom(GAME_DESCRIPTION_WORDS)} game!\n↓ ↓ ↓ ↓`
+
+  await bot.client.chat.update({
+    token: process.env.SLACK_BOT_TOKEN,
+    channel,
+    ts,
+    text: 'Two-player Tetris game',
+    blocks: [
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          text
+        }
+      },
+    ]
+  })
+}
+
+export async function send2pGameEndingAnnouncement (channel: string, winner: string, loser: string) {
+  const text = `<@${winner}> won!!! Better luck next time, <@${loser}>`
+
+  const msg = await bot.client.chat.postMessage({
+    token: process.env.SLACK_BOT_TOKEN,
+    channel,
+    text: 'Would you like to play 2-player Tetris?',
+    blocks: [
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          text
+        }
+      },
+    ]
+  })
+}

@@ -1,6 +1,7 @@
 import { iterateMatrix, shuffleArray } from './util'
 import { TetrisBlocksGrid, createGame, updateGame } from './render'
 import cloneDeep from 'clone-deep'
+import { on2pGameEnd } from '.'
 
 const GRID_WIDTH = 10
 const GRID_HEIGHT = 16
@@ -94,6 +95,9 @@ export interface NewGameConfig {
   channel: string,
   user: string,
   mode?: GameMode
+  id?: string
+  thread_ts?: string
+  startDelay?: number
 }
 
 export class Game {
@@ -122,11 +126,11 @@ export class Game {
 
   /** Creates the game message and starts the loop */
   public async startGame () {
-    this.ts = await createGame(this.cfg.channel)
-    this.startedAt = new Date().getTime()
-    // this.client = client
-
-    this.loopInterval = setInterval(() => this.loop(), LEVELS[0][1])
+    this.ts = await createGame(this.cfg.channel, this.cfg.thread_ts)
+    
+    setTimeout(() => {
+      this.loopInterval = setInterval(() => this.loop(), LEVELS[0][1])
+    }, this.cfg.startDelay || 0)
 
     // Start game after 1 second
     setTimeout(() => this.update(), 1000)
@@ -136,7 +140,8 @@ export class Game {
 
   /** Moves active piece down one square, adds new pieces, etc. */
   private loop () {
-    if (!this.activePiece) {
+    if (!this.activePiece) { // game not started
+      this.startedAt = new Date().getTime()
       this.addPiece()
     } else {
       const didMoveDown = this.updateActivePiece(piece => ({
@@ -171,7 +176,8 @@ export class Game {
       level: this.level,
       gameOver: this.gameOver,
       duration: (this.endedAt || new Date().getTime()) - this.startedAt,
-      nextPiece: this.nextTetrominoes[0]
+      nextPiece: this.nextTetrominoes[0],
+      startingIn: !this.startedAt && this.cfg.startDelay
     })
   }
 
@@ -317,9 +323,10 @@ export class Game {
 
   /** Stops the game */
   public endGame() {
+    if (this.cfg.mode === '2p' && this.cfg.id) on2pGameEnd(this.cfg.id, this.cfg.user)
     clearInterval(this.loopInterval)
     this.gameOver = true
-    this.endedAt = new Date().getTime() 
+    this.endedAt = new Date().getTime()
     this.update()
   }
 }

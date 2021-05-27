@@ -1,0 +1,35 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// datasource db {
+//   provider = "postgresql"
+//   url      = env("DATABASE_URL")
+// }
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model TwoPlayerGame {
+  id            Int     @id @default(autoincrement())
+  offerTs       String
+  channel  String
+  user          String
+  opponent      String
+  winner        String?
+}
+
+model Score {
+  id        Int         @id @default(autoincrement())
+  datetime  DateTime    @default(now())
+  user      String
+  score     Int         @default(0)
+
+  @@index([score])
+}
+

@@ -32,3 +32,5 @@ export function formatMilliseconds(ms: number, long?: boolean) {
     ? `${minutes} minutes and ${secondsRounded} seconds`
     : `${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + secondsRounded : secondsRounded}`
 }
+
+export const pickRandom = <T>(a: T[]): T => a[Math.floor(Math.random() * a.length)]
