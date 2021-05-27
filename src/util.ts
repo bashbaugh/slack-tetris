@@ -23,9 +23,14 @@ export function iterateMatrix<T, I>(array: T[][], forEach: (el: T, i: number, j:
   return false
 }
 
-/** Return a minutes:seconds string from milliseconds */
-export function formatMilliseconds(ms: number) {
+/** Return a `minutes:seconds` or` __ minutes and __ seconds` string from milliseconds */
+export function formatMilliseconds(ms: number, long?: boolean) {
   const minutes = Math.floor(ms / 1000 / 60)
-  const seconds = Math.floor(ms / 1000 % 60)
-  return `${minutes}:${seconds < 10 ? '0' + seconds : seconds}`
+  const seconds = ms / 1000 % 60
+  const secondsRounded = Math.floor(seconds)
+  return long
+    ? `${minutes} minutes and ${secondsRounded} seconds`
+    : `${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + secondsRounded : secondsRounded}`
 }
+
+export const pickRandom = <T>(a: T[]): T => a[Math.floor(Math.random() * a.length)]
