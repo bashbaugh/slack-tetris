@@ -1,7 +1,7 @@
 import { iterateMatrix, shuffleArray } from './util'
 import { TetrisBlocksGrid, createGame, updateGame } from './render'
 import cloneDeep from 'clone-deep'
-import { on2pGameEnd } from '.'
+import { onGameEnd } from './bot'
 
 const GRID_WIDTH = 10
 const GRID_HEIGHT = 16
@@ -95,7 +95,7 @@ export interface NewGameConfig {
   channel: string,
   user: string,
   mode?: GameMode
-  id?: string
+  matchId?: string
   thread_ts?: string
   startDelay?: number
 }
@@ -103,18 +103,18 @@ export interface NewGameConfig {
 export class Game {
   cfg: NewGameConfig
   ts: string
+  opponent: Game
 
   private pieces: Piece[] // Array of pieces and other events such as line clears. Current piece is last.
   private activePiece: Tetromino
   private nextTetrominoes: TetrominoName[] // New tetrominos to place
-  
+  private lastLevel: number
   private loopInterval: NodeJS.Timeout
 
   startedAt: number
   endedAt: number
   score: number
   gameOver: boolean
-  private lastLevel: number
 
   constructor (cfg: NewGameConfig) { 
     this.pieces = []
@@ -123,6 +123,7 @@ export class Game {
     if (!this.cfg.mode) this.cfg.mode = 'open'
     this.score = 0
   }
+
 
   /** Creates the game message and starts the loop */
   public async startGame () {
@@ -138,7 +139,7 @@ export class Game {
     return this.ts
   }
 
-  /** Moves active piece down one square, adds new pieces, etc. */
+  /** Moves active tetromino down one square, adds new pieces, etc. */
   private loop () {
     if (!this.activePiece) { // game not started
       this.startedAt = new Date().getTime()
@@ -175,13 +176,13 @@ export class Game {
       score: this.score,
       level: this.level,
       gameOver: this.gameOver,
-      duration: (this.endedAt || new Date().getTime()) - this.startedAt,
+      duration: (this.endedAt || new Date().getTime()) - this.startedAt || 0,
       nextPiece: this.nextTetrominoes[0],
       startingIn: !this.startedAt && this.cfg.startDelay
     })
   }
 
-  /** Converts the tetromino array into a 2d matrix of piece types.  */
+  /** Converts the piece array into a 2d matrix of blocks.  */
   private renderBlockGrid (includeActive = true): TetrisBlocksGrid {
     const grid: TetrisBlocksGrid = new Array(GRID_HEIGHT).fill(null).map(_ => new Array(GRID_WIDTH).fill(null))
 
@@ -258,6 +259,19 @@ export class Game {
     }, 0)
 
     this.score += (SCORE_TABLE.lineClears[lineClears] || 0) * this.lastLevel
+
+    if (this.opponent) this.opponent.addFillLines(lineClears)
+  }
+
+  /** Add fill lines to the bottom of this game's grid */
+  public addFillLines (num = 1) {
+    for (let i = 0; i < num; i++) {
+      this.pieces.push({
+        type: 'fill',
+      })
+    }
+    // Also need to move active piece up to make sure it didn't overlap
+    this.activePiece.position[0] = this.activePiece.position[0] + num
   }
 
   /** Checks the position of a piece to make sure it doens't overlap with another piece, or the walls */
@@ -323,7 +337,7 @@ export class Game {
 
   /** Stops the game */
   public endGame() {
-    if (this.cfg.mode === '2p' && this.cfg.id) on2pGameEnd(this.cfg.id, this.cfg.user)
+    onGameEnd(this.ts)
     clearInterval(this.loopInterval)
     this.gameOver = true
     this.endedAt = new Date().getTime()

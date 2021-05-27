@@ -256,34 +256,19 @@ export async function complete2pGameOffer (channel: string, ts: string, user: st
     token: process.env.SLACK_BOT_TOKEN,
     channel,
     ts,
-    text: 'Two-player Tetris game',
-    blocks: [
-      {
-        "type": "section",
-        "text": {
-          "type": "mrkdwn",
-          text
-        }
-      },
-    ]
+    text,
+    blocks: []
   })
 }
 
-export async function send2pGameEndingAnnouncement (channel: string, winner: string, loser: string) {
+export async function send2pGameEndingAnnouncement (channel: string, thread_ts: string, winner: string, loser: string) {
   const text = `<@${winner}> won!!! Better luck next time, <@${loser}>`
 
   const msg = await bot.client.chat.postMessage({
     token: process.env.SLACK_BOT_TOKEN,
     channel,
-    text: 'Would you like to play 2-player Tetris?',
-    blocks: [
-      {
-        "type": "section",
-        "text": {
-          "type": "mrkdwn",
-          text
-        }
-      },
-    ]
+    thread_ts,
+    reply_broadcast: true,
+    text
   })
 }
