@@ -1,7 +1,16 @@
 import { Game, NewGameConfig } from './game'
-import { complete2pGameOffer, create2pGameOffer, GameButtonAction, send2pGameEndingAnnouncement, update2pGameOffer } from './render'
-import { PrismaClient } from '@prisma/client'
+import {
+  renderLeaderboardBlocks, 
+  complete2pGameOffer, 
+  create2pGameOffer, 
+  GameButtonAction, 
+  send2pGameEndingAnnouncement, 
+  update2pGameOffer, 
+  sendEphemeral
+} from './render'
+import { Prisma, PrismaClient } from '@prisma/client'
 import { App } from '@slack/bolt'
+import { sendPayment } from './hn'
 
 const prisma = new PrismaClient()
 
@@ -27,8 +36,6 @@ const startGame = (cfg: NewGameConfig) => {
 
 export function registerBotListeners(bot: App) {
   bot.command('/tetris', async ({ command, ack, say, client }) => {
-    ack()
-  
     let mode = command.text
   
     if (!(mode === '1p' || mode === '2p')) mode = null
@@ -41,8 +48,8 @@ export function registerBotListeners(bot: App) {
       user: command.user_id,
       mode: mode as '1p' | '2p'
     })
-  
-  
+
+    ack()
   })
   
   bot.action(/btn_.+/, async ({ ack, body, client }) => {
@@ -80,7 +87,7 @@ export function registerBotListeners(bot: App) {
         break
     }
   })
-  
+
   bot.action('join-2p-game', async ({ ack, body, client }) => {
     ack()
     
@@ -158,13 +165,35 @@ export function registerBotListeners(bot: App) {
       text: HELP_TEXT
     })
   })
+
+  bot.command('/tetris-leaderboard', async ({ command, ack, say, client }) => {
+    const allScores = await prisma.score.findMany({
+      select: {
+        user: true,
+        score: true
+      },
+      orderBy: {
+        score: 'desc'
+      }
+    })
+
+    const highScores = allScores.reduce((scores: typeof allScores, score) => {
+      if (scores.length === 10) return scores
+      if (scores.find(s => s.user === score.user)) return scores // This user is already in high scores
+
+      return scores.concat([score])
+    }, [])
+
+    ack({
+      response_type: 'ephemeral',
+      ...renderLeaderboardBlocks(highScores),
+    })
+  })
 }
 
 // Hooked by game class on game end
-export async function onGameEnd(ts: string) {
-  const gameInst = games[ts]
-
-  prisma.score.create({
+export async function onGameEnd(gameInst: Game) {
+  await prisma.score.create({
     data: {
       score: gameInst.score,
       user: gameInst.cfg.user
@@ -193,4 +222,10 @@ export async function onGameEnd(ts: string) {
     complete2pGameOffer(game.channel, game.offerTs, game.user, game.opponent, winner)
     send2pGameEndingAnnouncement(game.channel, game.offerTs, winner, player)
   }
+}
+
+export async function onPayment (fromId: string, amount: number, reason: string) {
+  console.log('Received')
+  sendEphemeral('G01LJ2RSETF', fromId, `I received ${amount} HN from you, and am sending it back :)`)
+  sendPayment(fromId, amount, 'Refunddddd')
 }

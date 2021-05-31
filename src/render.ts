@@ -142,6 +142,15 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
   }
 }
 
+export const sendEphemeral = (channel: string, user: string, text: string) => { 
+  return bot.client.chat.postEphemeral({
+    token: process.env.SLACK_BOT_TOKEN,
+    channel,
+    user,
+    text
+  })
+}
+
 export async function createGame (channel: string, thread_ts?: string): Promise<string> {
   const msg = await bot.client.chat.postMessage({
     token: process.env.SLACK_BOT_TOKEN,
@@ -208,7 +217,7 @@ export async function update2pGameOffer (channel: string, ts: string, user: stri
         "type": "section",
         "text": {
           "type": "mrkdwn",
-          "text": `To place a bet on this match, send HN to me with reason \`${bettingId}-PLAYER\` (replace PLAYER with \`1\` or \`2\`). Players: you can only bet on yourself, and can win a maximum of 2x your own bet. You will be refunded any amount bet in excess of your opponent's bet, so agree beforehand on the amount to bet.`
+          "text": `To place a bet on this match, send HN to me with reason \`${bettingId}-PLAYER\` (replace PLAYER with \`1\` or \`2\`). Ex: \`/send-hn 4 to @tetris for ${bettingId}-1\`. \n\nPlayers: you can only bet on yourself, and can win a maximum of 2x your own bet. You will be refunded any amount bet in excess of your opponent's bet, so agree beforehand on the amount to bet.`
         }
       },
       {
@@ -271,4 +280,54 @@ export async function send2pGameEndingAnnouncement (channel: string, thread_ts: 
     reply_broadcast: true,
     text
   })
+}
+
+export function renderLeaderboardBlocks(scores: {user: string, score: number}[]) {
+  return {
+    text: 'Tetris leaderboard',
+    blocks: [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": ":medal: :tetromino-t: Top Players",
+          "emoji": true
+        }
+      },
+      {
+        "type": "section",
+        "fields": [
+          {
+            "type": "mrkdwn",
+            "text": `Player`
+          },
+          {
+            "type": "mrkdwn",
+            "text": `High score`
+          }
+        ]
+      },
+      {
+        "type": "divider"
+      },
+      ...[].concat(...scores.map((s, i) => ([
+        {
+          "type": "section",
+          "fields": [
+            {
+              "type": "mrkdwn",
+              "text": `*${i}.*\t<@${s.user}>`
+            },
+            {
+              "type": "mrkdwn",
+              "text": `${s.score}`
+            }
+          ]
+        },
+        {
+          "type": "divider"
+        }
+      ]))),
+    ]
+  }
 }

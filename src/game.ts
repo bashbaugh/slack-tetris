@@ -136,6 +136,8 @@ export class Game {
     // Start game after 1 second
     setTimeout(() => this.update(), 1000)
 
+    console.log(`Game starting in ${this.cfg.channel}`)
+
     return this.ts
   }
 
@@ -337,7 +339,7 @@ export class Game {
 
   /** Stops the game */
   public endGame() {
-    onGameEnd(this.ts)
+    onGameEnd(this)
     clearInterval(this.loopInterval)
     this.gameOver = true
     this.endedAt = new Date().getTime()
