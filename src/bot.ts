@@ -6,7 +6,8 @@ import {
   GameButtonAction, 
   send2pGameEndingAnnouncement, 
   update2pGameOffer, 
-  sendEphemeral
+  sendEphemeral,
+  sendMessage
 } from './render'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { App } from '@slack/bolt'
@@ -140,6 +141,11 @@ export function registerBotListeners(bot: App) {
       startDelay: 5000,
       matchId: game.id.toString()
     }
+
+    await prisma.twoPlayerGame.update({
+      where: { id: game.id },
+      data: { started: true }
+    })
   
     // Start a game for each player
     const g1 = startGame({
@@ -159,11 +165,7 @@ export function registerBotListeners(bot: App) {
   bot.event('app_mention', async ({ event, client }) => {
     // say() sends a message to the channel where the event was triggered
     if (event.thread_ts) return
-    client.chat.postEphemeral({
-      channel: event.channel,
-      user: event.user,
-      text: HELP_TEXT
-    })
+    sendEphemeral(event.channel, event.user, HELP_TEXT)
   })
 
   bot.command('/tetris-leaderboard', async ({ command, ack, say, client }) => {
@@ -205,7 +207,10 @@ export async function onGameEnd(gameInst: Game) {
 
     const id = parseInt(gameInst.cfg.matchId)
     const game = await prisma.twoPlayerGame.findFirst({
-      where: { id }
+      where: { id },
+      include: {
+        bets: true
+      }
     })
     if (!game || game.winner) return
 
@@ -221,11 +226,80 @@ export async function onGameEnd(gameInst: Game) {
 
     complete2pGameOffer(game.channel, game.offerTs, game.user, game.opponent, winner)
     send2pGameEndingAnnouncement(game.channel, game.offerTs, winner, player)
+  
+    const totalBetAmount = game.bets.reduce((total, bet) => total + bet.amount, 0)
+    const totalWinningBetsAmount = game.bets.reduce((total, bet) => {
+      return bet.betOn === winner ? total + bet.amount : 0
+    }, 0)
+
+    if (totalBetAmount > 0) {
+      for (const bet of game.bets) {
+        if (bet.betOn === winner) {
+          const proportion = bet.amount / totalWinningBetsAmount
+          const payout = Math.floor(proportion * totalBetAmount)
+          sendPayment(bet.user, payout, `Bet won on Tetris game ${game.id}`)
+          sendEphemeral(game.channel, bet.user, `:fastparrot: You won ${payout}‡ back from your ${bet.amount}‡ bet!!!`)
+        } else {
+          sendEphemeral(game.channel, bet.user, `:sadparrot: You lost your bet.`)
+        }
+      }
+    }
   }
 }
 
 export async function onPayment (fromId: string, amount: number, reason: string) {
-  console.log('Received')
-  sendEphemeral('G01LJ2RSETF', fromId, `I received ${amount} HN from you, and am sending it back :)`)
-  sendPayment(fromId, amount, 'Refunddddd')
+  const refund = (text: string) => {
+    sendMessage(fromId, text)
+    sendPayment(fromId, amount, 'Refund payment')
+  }
+
+  let id: number, betTargetPlayer: number
+  try {
+    [id, betTargetPlayer] = reason.split('-').map(Number)
+    if (id < 1 || !(betTargetPlayer === 1 || betTargetPlayer === 2)) throw Error()
+  } catch {
+    refund(`I received ${amount}‡ from you, but don't understand why, so I'm sending it back.`)
+    return
+  }
+
+  const game = await prisma.twoPlayerGame.findFirst({
+    where: { id }
+  })
+
+  if (!game || game.started) {
+    refund(`Game ${id} either doesn't exist or has already started. Refunding your payment.`)
+    return
+  }
+
+  const betOn = betTargetPlayer === 1 ? game.user : game.opponent
+
+  try {
+    await prisma.bet.create({
+      data: {
+        user: fromId,
+        betOn,
+        amount,
+        gameId: game.id,
+      }
+    })
+    sendEphemeral(game.channel, fromId, `Your bet of ${amount}‡ on <@${betOn}> was received.`)
+  } catch {
+    refund(`Something went wrong and your bet couldn't be replaced. Refunding you ${amount}‡`)
+    return
+  }
+
+  const allBets = await prisma.bet.findMany({
+    where: { gameId: game.id }
+  })
+
+  const total = allBets.reduce((total, bet) => total + bet.amount, 0)
+
+  update2pGameOffer(
+    game.channel, 
+    game.offerTs, 
+    game.user, 
+    game.opponent, 
+    game.id.toString(), 
+    total
+  )
 }

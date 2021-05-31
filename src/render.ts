@@ -2,6 +2,20 @@ import { GameMode, TetrominoName } from './game'
 import { bot } from '.'
 import { formatMilliseconds, pickRandom } from './util'
 
+export const sendEphemeral = (channel: string, user: string, text: string) => bot.client.chat.postEphemeral({
+  token: process.env.SLACK_BOT_TOKEN,
+  channel,
+  user,
+  text
+})
+
+export const sendMessage = (channel: string, text: string, thread_ts?: string) => bot.client.chat.postMessage({
+  token: process.env.SLACK_BOT_TOKEN,
+  channel,
+  thread_ts,
+  text
+})
+
 const BLOCK_EMOJI: Record<TetrominoName | 'FILL', string> = {
   Z: ':tetris-block-z:', // red
   S: ':tetris-block-s:', // green
@@ -142,22 +156,8 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
   }
 }
 
-export const sendEphemeral = (channel: string, user: string, text: string) => { 
-  return bot.client.chat.postEphemeral({
-    token: process.env.SLACK_BOT_TOKEN,
-    channel,
-    user,
-    text
-  })
-}
-
 export async function createGame (channel: string, thread_ts?: string): Promise<string> {
-  const msg = await bot.client.chat.postMessage({
-    token: process.env.SLACK_BOT_TOKEN,
-    channel,
-    thread_ts,
-    text: SPLASH_TEXT
-  })
+  const msg = await sendMessage(channel, SPLASH_TEXT, thread_ts)
 
   return msg.ts
 }
@@ -199,7 +199,14 @@ export async function create2pGameOffer (channel: string, user: string): Promise
   return msg.ts
 }
 
-export async function update2pGameOffer (channel: string, ts: string, user: string, opponent: string, bettingId: string) {
+export async function update2pGameOffer (
+  channel: string, 
+  ts: string, 
+  user: string, 
+  opponent: string, 
+  bettingId: string, 
+  betsTotal: number = 0
+) {
   const msg = await bot.client.chat.update({
     token: process.env.SLACK_BOT_TOKEN,
     channel,
@@ -217,7 +224,7 @@ export async function update2pGameOffer (channel: string, ts: string, user: stri
         "type": "section",
         "text": {
           "type": "mrkdwn",
-          "text": `To place a bet on this match, send HN to me with reason \`${bettingId}-PLAYER\` (replace PLAYER with \`1\` or \`2\`). Ex: \`/send-hn 4 to @tetris for ${bettingId}-1\`. \n\nPlayers: you can only bet on yourself, and can win a maximum of 2x your own bet. You will be refunded any amount bet in excess of your opponent's bet, so agree beforehand on the amount to bet.`
+          "text": `To place a bet on this match, send HN to me with reason \`${bettingId}-PLAYER\` (replace PLAYER with \`1\` or \`2\`). Ex: \`/send-hn 4 to @tetris for ${bettingId}-1\`. :money_with_wings: \n\nPlayers: you can only bet on yourself, and can win a maximum of 2x your own bet. You will be refunded any amount bet in excess of your opponent's bet, so agree beforehand on the amount to bet. \n\n*Current pool*: ${betsTotal}‡`
         }
       },
       {

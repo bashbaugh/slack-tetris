@@ -52,7 +52,7 @@ export function sendPayment(to: string, amount: number, reason: string): Promise
         id
       }
     }
-  `, {...arguments, from: process.env.BOT_SLACK_ID})
-    .then(t => t.id)
+  `, { to, amount, reason, from: process.env.BOT_SLACK_ID })
+    .then(t => t.send.id)
     .catch(console.error)
 }
