@@ -105,9 +105,11 @@ export class Game {
   ts: string
   opponent: Game
 
-  private pieces: Piece[] // Array of pieces and other events such as line clears. Current piece is last.
+  private pieces: Piece[] // Array of pieces and other events such as line clears. Latest piece is last.
   private activePiece: Tetromino
-  private nextTetrominoes: TetrominoName[] // New tetrominos to place
+  private nextTetrominoes: TetrominoName[] // New tetrominos to place. Next is first.
+  private hold?: TetrominoName
+  private hasAlreadyHeld: boolean
   private fillSlot: number // Where is the slot placed in filler rows?
   private lastLevel: number
   private loopInterval: NodeJS.Timeout
@@ -158,6 +160,7 @@ export class Game {
       if (!didMoveDown) { // Can't move down any further: finalize move, update score, and add a new piece
         this.addPiece() // Must finalize move first so that it can be properly cleared
         this.clearLinesAndUpdateScore()
+        this.hasAlreadyHeld = false
       }
     }
 
@@ -183,6 +186,7 @@ export class Game {
       gameOver: this.gameOver,
       duration: (this.endedAt || new Date().getTime()) - this.startedAt || 0,
       nextPiece: this.nextTetrominoes[0],
+      heldPiece: this.hold,
       startingIn: !this.startedAt && this.cfg.startDelay
     })
   }
@@ -228,13 +232,13 @@ export class Game {
   }
 
   /** Creates a new active piece and spawns it at the top */
-  private addPiece () {
-    if (this.nextTetrominoes.length < 2) { // Running out of new pieces; add 7 more
+  private addPiece (name?: TetrominoName) {
+    if (this.nextTetrominoes.length < 3) { // Running out of new pieces; add 7 more
       const newSet = shuffleArray(Object.keys(TETROMINO_SHAPES) as TetrominoName[])
       this.nextTetrominoes = this.nextTetrominoes.concat(newSet)
     }
 
-    const nextPieceType = this.nextTetrominoes.shift()
+    const nextPieceType = name || this.nextTetrominoes.shift()
     const nextPiece = getTetromino(nextPieceType, 0) as Tetromino
     nextPiece.position = [GRID_HEIGHT - nextPiece.shape.length, Math.ceil(GRID_WIDTH / 2) - 2]
 
@@ -339,6 +343,22 @@ export class Game {
 
       if (continueMovingDown) this.score += SCORE_TABLE.pointsPerRowSkipped * this.level
     }
+    this.update()
+  }
+
+  /** Hold the current active piece  */
+  public holdPiece() {
+    if (this.hasAlreadyHeld) return // Can only hold once per piece
+
+    // Take new tetromino type from hold or next stack, and add current type to hold.
+    const newType = this.hold || this.nextTetrominoes.shift()
+    this.hold = this.activePiece.name
+
+    // Remove the current aative piece and add the held one.
+    this.activePiece = null
+    this.addPiece(newType)
+
+    this.hasAlreadyHeld = true
     this.update()
   }
 

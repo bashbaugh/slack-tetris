@@ -83,6 +83,9 @@ export function registerBotListeners(bot: App) {
       case 'btn_rotate':
         game.rotatePiece()
         break
+      case 'btn_hold':
+        game.holdPiece()
+        break
       case 'btn_stop':
         game.endGame()
         break

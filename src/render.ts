@@ -48,6 +48,7 @@ const GAME_BUTTONS = {
   'btn_left': ':tetris-control-left:',
   'btn_right': ':tetris-control-right:',
   'btn_down': ':tetris-control-down:',
+  'btn_hold': ':tetris-control-switch:',
   'btn_stop': ':tetris-control-stop:'
 }
 
@@ -76,6 +77,7 @@ export interface GameMessageData {
   mode: GameMode
   blocks?: TetrisBlocksGrid
   nextPiece?: TetrominoName
+  heldPiece?: TetrominoName
   score: number
   level: number
   gameOver: boolean
@@ -84,9 +86,8 @@ export interface GameMessageData {
 }
 
 function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } {
-  const nextPieceText = game.nextPiece 
-    ? `\n> *Next*\n> ${TETROMINO_EMOJI[game.nextPiece]}`
-    : ''
+  const nextPieceText = `\n> *Next*\n> ${TETROMINO_EMOJI[game.nextPiece] || INVISIBLE_CHARACTER}`
+  const heldPieceText = `\n> *Hold*\n> ${TETROMINO_EMOJI[game.heldPiece] || INVISIBLE_CHARACTER}`
 
   const blocks: any = [
     {
@@ -95,7 +96,7 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
         "type": "mrkdwn",
         "text": game.gameOver 
           ? `<@${game.startedBy}> played Tetris for ${formatMilliseconds(game.duration, true)}. Final score: *${game.score}*` 
-          : `<@${game.startedBy}> is playing in ${game.mode} mode. Score: *${game.score}* | ${formatMilliseconds(game.duration)} | Lvl ${game.level} ${nextPieceText}`
+          : `<@${game.startedBy}> is playing in ${game.mode} mode. Score: *${game.score}* | ${formatMilliseconds(game.duration)} | Lvl ${game.level}`
       }
     },
     {
@@ -136,6 +137,20 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
         action_id
       }))
     })
+
+    blocks.splice(1, 0, {
+      "type": "section",
+      "fields": [
+        {
+          "type": "mrkdwn",
+          "text": nextPieceText
+        },
+        {
+          "type": "mrkdwn",
+          "text": heldPieceText
+        }
+      ]
+    })
   } else {
     blocks.push(
       {
@@ -175,7 +190,7 @@ export async function create2pGameOffer (channel: string, user: string): Promise
   const msg = await bot.client.chat.postMessage({
     token: process.env.SLACK_BOT_TOKEN,
     channel,
-    text: 'Would you like to play 2-player Tetris?',
+    text: 'Want to play 2-player Tetris?',
     blocks: [
       {
         "type": "section",
