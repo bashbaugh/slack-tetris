@@ -1,19 +1,19 @@
-import { App, ExpressReceiver } from '@slack/bolt'
 import * as bodyParser from 'body-parser'
 import { GraphQLClient, gql } from 'graphql-request'
 import { onPayment } from './bot'
+import { Express } from 'express'
 
 const jsonParser = bodyParser.json()
 
 const gqlClient = new GraphQLClient('https://hn.rishi.cx/')
 gqlClient.setHeader('secret', process.env.HN_API_KEY)
 
-export function registerHNWebhookListeners(receiver: ExpressReceiver) {
-  receiver.router.get('/test', (req, res) => {
-    res.send('yay!')
+export function registerHNWebhookListeners(router: Express) {
+  router.get('/', (req, res) => {
+    res.send('Hi there. https://github.com/scitronboy/slack-tetris')
   })
 
-  receiver.router.post('/hn/payment', jsonParser, async (req) => {
+  router.post('/hn/payment', jsonParser, async (req) => {
     const paymentId = req.body?.body?.id
 
     if (!paymentId) return
