@@ -2,6 +2,20 @@ import { GameMode, TetrominoName } from './game'
 import { bot } from '.'
 import { formatMilliseconds, pickRandom } from './util'
 
+export const sendEphemeral = (channel: string, user: string, text: string) => bot.client.chat.postEphemeral({
+  token: process.env.SLACK_BOT_TOKEN,
+  channel,
+  user,
+  text
+})
+
+export const sendMessage = (channel: string, text: string, thread_ts?: string) => bot.client.chat.postMessage({
+  token: process.env.SLACK_BOT_TOKEN,
+  channel,
+  thread_ts,
+  text
+})
+
 const BLOCK_EMOJI: Record<TetrominoName | 'FILL', string> = {
   Z: ':tetris-block-z:', // red
   S: ':tetris-block-s:', // green
@@ -34,6 +48,7 @@ const GAME_BUTTONS = {
   'btn_left': ':tetris-control-left:',
   'btn_right': ':tetris-control-right:',
   'btn_down': ':tetris-control-down:',
+  'btn_hold': ':tetris-control-switch:',
   'btn_stop': ':tetris-control-stop:'
 }
 
@@ -62,6 +77,7 @@ export interface GameMessageData {
   mode: GameMode
   blocks?: TetrisBlocksGrid
   nextPiece?: TetrominoName
+  heldPiece?: TetrominoName
   score: number
   level: number
   gameOver: boolean
@@ -70,9 +86,8 @@ export interface GameMessageData {
 }
 
 function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } {
-  const nextPieceText = game.nextPiece 
-    ? `\n> *Next*\n> ${TETROMINO_EMOJI[game.nextPiece]}`
-    : ''
+  const nextPieceText = `\n> *Next*\n> ${TETROMINO_EMOJI[game.nextPiece] || INVISIBLE_CHARACTER}`
+  const heldPieceText = `\n> *Hold*\n> ${TETROMINO_EMOJI[game.heldPiece] || INVISIBLE_CHARACTER}`
 
   const blocks: any = [
     {
@@ -81,7 +96,7 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
         "type": "mrkdwn",
         "text": game.gameOver 
           ? `<@${game.startedBy}> played Tetris for ${formatMilliseconds(game.duration, true)}. Final score: *${game.score}*` 
-          : `<@${game.startedBy}> is playing in ${game.mode} mode. Score: *${game.score}* | ${formatMilliseconds(game.duration)} | Lvl ${game.level} ${nextPieceText}`
+          : `<@${game.startedBy}> is playing in ${game.mode} mode. Score: *${game.score}* | ${formatMilliseconds(game.duration)} | Lvl ${game.level}`
       }
     },
     {
@@ -122,6 +137,20 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
         action_id
       }))
     })
+
+    blocks.splice(1, 0, {
+      "type": "section",
+      "fields": [
+        {
+          "type": "mrkdwn",
+          "text": nextPieceText
+        },
+        {
+          "type": "mrkdwn",
+          "text": heldPieceText
+        }
+      ]
+    })
   } else {
     blocks.push(
       {
@@ -143,12 +172,7 @@ function renderGameBlocks(game: GameMessageData): { blocks: any, text: string } 
 }
 
 export async function createGame (channel: string, thread_ts?: string): Promise<string> {
-  const msg = await bot.client.chat.postMessage({
-    token: process.env.SLACK_BOT_TOKEN,
-    channel,
-    thread_ts,
-    text: SPLASH_TEXT
-  })
+  const msg = await sendMessage(channel, SPLASH_TEXT, thread_ts)
 
   return msg.ts
 }
@@ -166,7 +190,7 @@ export async function create2pGameOffer (channel: string, user: string): Promise
   const msg = await bot.client.chat.postMessage({
     token: process.env.SLACK_BOT_TOKEN,
     channel,
-    text: 'Would you like to play 2-player Tetris?',
+    text: 'Want to play 2-player Tetris?',
     blocks: [
       {
         "type": "section",
@@ -190,7 +214,14 @@ export async function create2pGameOffer (channel: string, user: string): Promise
   return msg.ts
 }
 
-export async function update2pGameOffer (channel: string, ts: string, user: string, opponent: string, bettingId: string) {
+export async function update2pGameOffer (
+  channel: string, 
+  ts: string, 
+  user: string, 
+  opponent: string, 
+  bettingId: string, 
+  betsTotal: number = 0
+) {
   const msg = await bot.client.chat.update({
     token: process.env.SLACK_BOT_TOKEN,
     channel,
@@ -208,7 +239,7 @@ export async function update2pGameOffer (channel: string, ts: string, user: stri
         "type": "section",
         "text": {
           "type": "mrkdwn",
-          "text": `To place a bet on this match, send HN to me with reason \`${bettingId}-PLAYER\` (replace PLAYER with \`1\` or \`2\`). Players: you can only bet on yourself, and can win a maximum of 2x your own bet. You will be refunded any amount bet in excess of your opponent's bet, so agree beforehand on the amount to bet.`
+          "text": `To place a bet on this match, send HN to me with reason \`${bettingId}-PLAYER\` (replace PLAYER with \`1\` or \`2\`). Ex: \`/send-hn 4 to @tetris for ${bettingId}-1\`. :money_with_wings: \n\nPlayers: You can only win a maximum of 2x your own bet. You will be refunded any amount bet in excess of your opponent's bet, so agree before starting on the amount to bet. \n\n*Current pool*: ${betsTotal}‡`
         }
       },
       {
@@ -271,4 +302,54 @@ export async function send2pGameEndingAnnouncement (channel: string, thread_ts: 
     reply_broadcast: true,
     text
   })
+}
+
+export function renderLeaderboardBlocks(scores: {user: string, score: number}[]) {
+  return {
+    text: 'Tetris leaderboard',
+    blocks: [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": ":medal: :tetromino-t: Top Players",
+          "emoji": true
+        }
+      },
+      {
+        "type": "section",
+        "fields": [
+          {
+            "type": "mrkdwn",
+            "text": `Player`
+          },
+          {
+            "type": "mrkdwn",
+            "text": `High score`
+          }
+        ]
+      },
+      {
+        "type": "divider"
+      },
+      ...[].concat(...scores.map((s, i) => ([
+        {
+          "type": "section",
+          "fields": [
+            {
+              "type": "mrkdwn",
+              "text": `*${i}.*\t<@${s.user}>`
+            },
+            {
+              "type": "mrkdwn",
+              "text": `${s.score}`
+            }
+          ]
+        },
+        {
+          "type": "divider"
+        }
+      ]))),
+    ]
+  }
 }

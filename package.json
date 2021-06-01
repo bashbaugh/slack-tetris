@@ -24,7 +24,9 @@
   "dependencies": {
     "@prisma/client": "2.23.0",
     "@slack/bolt": "^3.3.0",
-    "axios": "^0.21.1",
-    "clone-deep": "^4.0.1"
+    "body-parser": "^1.19.0",
+    "clone-deep": "^4.0.1",
+    "graphql": "^15.5.0",
+    "graphql-request": "^3.4.0"
   }
 }

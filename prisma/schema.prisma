@@ -18,10 +18,21 @@ generator client {
 model TwoPlayerGame {
   id            Int     @id @default(autoincrement())
   offerTs       String
-  channel  String
+  channel       String
   user          String
   opponent      String
+  started       Boolean?
   winner        String?
+  bets          Bet[]
+}
+
+model Bet {
+  id        Int             @id @default(autoincrement())
+  game      TwoPlayerGame   @relation(fields: [gameId], references: [id])
+  gameId    Int
+  user      String // Which user placed the bet?
+  betOn     String // Which user was this bet placed on?
+  amount    Int
 }
 
 model Score {
@@ -32,4 +43,3 @@ model Score {
 
   @@index([score])
 }
-

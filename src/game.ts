@@ -18,10 +18,10 @@ const SCORE_TABLE = {
 
 // Ex: after a score of 40, there will be a 1200ms delay between loops
 const LEVELS: [scoreThreshold: number, intervalDuration: number][] = [
-  [0, 1600],
-  [40, 1200],
-  [200, 1000],
-  [600, 800],
+  [0, 1400],
+  [40, 1000],
+  [200, 900],
+  [800, 800],
   [2000, 600],
   [20000, 400],
   [50000, 200],
@@ -105,9 +105,12 @@ export class Game {
   ts: string
   opponent: Game
 
-  private pieces: Piece[] // Array of pieces and other events such as line clears. Current piece is last.
+  private pieces: Piece[] // Array of pieces and other events such as line clears. Latest piece is last.
   private activePiece: Tetromino
-  private nextTetrominoes: TetrominoName[] // New tetrominos to place
+  private nextTetrominoes: TetrominoName[] // New tetrominos to place. Next is first.
+  private hold?: TetrominoName
+  private hasAlreadyHeld: boolean
+  private fillSlot: number // Where is the slot placed in filler rows?
   private lastLevel: number
   private loopInterval: NodeJS.Timeout
 
@@ -122,19 +125,23 @@ export class Game {
     this.cfg = cfg
     if (!this.cfg.mode) this.cfg.mode = 'open'
     this.score = 0
-  }
 
+    // Between the first and last rows (exclusive)
+    this.fillSlot = Math.floor(Math.random() * (GRID_WIDTH - 2) + 1)
+  }
 
   /** Creates the game message and starts the loop */
   public async startGame () {
     this.ts = await createGame(this.cfg.channel, this.cfg.thread_ts)
     
     setTimeout(() => {
-      this.loopInterval = setInterval(() => this.loop(), LEVELS[0][1])
+      this.loopInterval = setInterval(() => this.loop(), this.levelDelay)
     }, this.cfg.startDelay || 0)
 
     // Start game after 1 second
     setTimeout(() => this.update(), 1000)
+
+    console.log(`Game starting in ${this.cfg.channel}`)
 
     return this.ts
   }
@@ -153,13 +160,14 @@ export class Game {
       if (!didMoveDown) { // Can't move down any further: finalize move, update score, and add a new piece
         this.addPiece() // Must finalize move first so that it can be properly cleared
         this.clearLinesAndUpdateScore()
+        this.hasAlreadyHeld = false
       }
     }
 
     // If we are on a new level, cancel the loop interval and set a new one with a shorter duration
     if (this.level > this.lastLevel) {
       clearInterval(this.loopInterval)
-      this.loopInterval = setInterval(() => this.loop(), LEVELS[this.level][1])
+      this.loopInterval = setInterval(() => this.loop(), this.levelDelay)
     }
 
     this.lastLevel = this.level
@@ -178,6 +186,7 @@ export class Game {
       gameOver: this.gameOver,
       duration: (this.endedAt || new Date().getTime()) - this.startedAt || 0,
       nextPiece: this.nextTetrominoes[0],
+      heldPiece: this.hold,
       startingIn: !this.startedAt && this.cfg.startDelay
     })
   }
@@ -210,6 +219,7 @@ export class Game {
       if (piece.type === 'fill') {
         grid.pop() // Remove row at top
         grid.unshift(new Array(GRID_WIDTH).fill('FILL')) // Add new filled row at bottom
+        grid[0][this.fillSlot] = null // Leave a slot in the fill so that it can be cleared
       }
     }
 
@@ -221,14 +231,19 @@ export class Game {
     return LEVELS.reduce((lvl, [threshold]) => lvl += this.score >= Number(threshold) ? 1 : 0, 0)
   }
 
+  /** Get current delay between loops  */
+  private get levelDelay (): number {
+    return LEVELS[this.level - 1][1]
+  }
+
   /** Creates a new active piece and spawns it at the top */
-  private addPiece () {
-    if (this.nextTetrominoes.length < 2) { // Running out of new pieces; add 7 more
+  private addPiece (name?: TetrominoName) {
+    if (this.nextTetrominoes.length < 3) { // Running out of new pieces; add 7 more
       const newSet = shuffleArray(Object.keys(TETROMINO_SHAPES) as TetrominoName[])
       this.nextTetrominoes = this.nextTetrominoes.concat(newSet)
     }
 
-    const nextPieceType = this.nextTetrominoes.shift()
+    const nextPieceType = name || this.nextTetrominoes.shift()
     const nextPiece = getTetromino(nextPieceType, 0) as Tetromino
     nextPiece.position = [GRID_HEIGHT - nextPiece.shape.length, Math.ceil(GRID_WIDTH / 2) - 2]
 
@@ -246,8 +261,8 @@ export class Game {
     const grid = this.renderBlockGrid(false)
 
     const lineClears = grid.reduce((fullRows, row, rowIndex) => {
-      const rowFull = row.find(b => !b) === undefined // No empty places found
-      const cleared = rowFull && row[0] !== 'FILL' // Filled rows don't count
+      const cleared = row.find(b => !b) === undefined // No empty places found
+      const isFillClear = row[0] === 'FILL'
 
       // The user has cleared this row!!!
       if (cleared) this.pieces.push({
@@ -255,7 +270,8 @@ export class Game {
         row: rowIndex
       })
 
-      return fullRows + (cleared ? 1 : 0)
+      // Fill clears don't count :(
+      return fullRows + ((cleared && !isFillClear) ? 1 : 0)
     }, 0)
 
     this.score += (SCORE_TABLE.lineClears[lineClears] || 0) * this.lastLevel
@@ -263,7 +279,7 @@ export class Game {
     if (this.opponent) this.opponent.addFillLines(lineClears)
   }
 
-  /** Add fill lines to the bottom of this game's grid */
+  /** Add fill lines to the bottom of this game's grid. Used by opponent game when they clear a line. */
   public addFillLines (num = 1) {
     for (let i = 0; i < num; i++) {
       this.pieces.push({
@@ -335,9 +351,25 @@ export class Game {
     this.update()
   }
 
+  /** Hold the current active piece  */
+  public holdPiece() {
+    if (this.hasAlreadyHeld) return // Can only hold once per piece
+
+    // Take new tetromino type from hold or next stack, and add current type to hold.
+    const newType = this.hold || this.nextTetrominoes.shift()
+    this.hold = this.activePiece.name
+
+    // Remove the current aative piece and add the held one.
+    this.activePiece = null
+    this.addPiece(newType)
+
+    this.hasAlreadyHeld = true
+    this.update()
+  }
+
   /** Stops the game */
   public endGame() {
-    onGameEnd(this.ts)
+    onGameEnd(this)
     clearInterval(this.loopInterval)
     this.gameOver = true
     this.endedAt = new Date().getTime()

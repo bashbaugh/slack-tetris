@@ -1,7 +1,17 @@
 import { Game, NewGameConfig } from './game'
-import { complete2pGameOffer, create2pGameOffer, GameButtonAction, send2pGameEndingAnnouncement, update2pGameOffer } from './render'
-import { PrismaClient } from '@prisma/client'
+import {
+  renderLeaderboardBlocks, 
+  complete2pGameOffer, 
+  create2pGameOffer, 
+  GameButtonAction, 
+  send2pGameEndingAnnouncement, 
+  update2pGameOffer, 
+  sendEphemeral,
+  sendMessage
+} from './render'
+import { Prisma, PrismaClient } from '@prisma/client'
 import { App } from '@slack/bolt'
+import { sendPayment } from './hn'
 
 const prisma = new PrismaClient()
 
@@ -27,8 +37,6 @@ const startGame = (cfg: NewGameConfig) => {
 
 export function registerBotListeners(bot: App) {
   bot.command('/tetris', async ({ command, ack, say, client }) => {
-    ack()
-  
     let mode = command.text
   
     if (!(mode === '1p' || mode === '2p')) mode = null
@@ -41,8 +49,8 @@ export function registerBotListeners(bot: App) {
       user: command.user_id,
       mode: mode as '1p' | '2p'
     })
-  
-  
+
+    ack()
   })
   
   bot.action(/btn_.+/, async ({ ack, body, client }) => {
@@ -75,12 +83,15 @@ export function registerBotListeners(bot: App) {
       case 'btn_rotate':
         game.rotatePiece()
         break
+      case 'btn_hold':
+        game.holdPiece()
+        break
       case 'btn_stop':
         game.endGame()
         break
     }
   })
-  
+
   bot.action('join-2p-game', async ({ ack, body, client }) => {
     ack()
     
@@ -133,6 +144,11 @@ export function registerBotListeners(bot: App) {
       startDelay: 5000,
       matchId: game.id.toString()
     }
+
+    await prisma.twoPlayerGame.update({
+      where: { id: game.id },
+      data: { started: true }
+    })
   
     // Start a game for each player
     const g1 = startGame({
@@ -152,19 +168,37 @@ export function registerBotListeners(bot: App) {
   bot.event('app_mention', async ({ event, client }) => {
     // say() sends a message to the channel where the event was triggered
     if (event.thread_ts) return
-    client.chat.postEphemeral({
-      channel: event.channel,
-      user: event.user,
-      text: HELP_TEXT
+    sendEphemeral(event.channel, event.user, HELP_TEXT)
+  })
+
+  bot.command('/tetris-leaderboard', async ({ command, ack, say, client }) => {
+    const allScores = await prisma.score.findMany({
+      select: {
+        user: true,
+        score: true
+      },
+      orderBy: {
+        score: 'desc'
+      }
+    })
+
+    const highScores = allScores.reduce((scores: typeof allScores, score) => {
+      if (scores.length === 10) return scores
+      if (scores.find(s => s.user === score.user)) return scores // This user is already in high scores
+
+      return scores.concat([score])
+    }, [])
+
+    ack({
+      response_type: 'ephemeral',
+      ...renderLeaderboardBlocks(highScores),
     })
   })
 }
 
 // Hooked by game class on game end
-export async function onGameEnd(ts: string) {
-  const gameInst = games[ts]
-
-  prisma.score.create({
+export async function onGameEnd(gameInst: Game) {
+  await prisma.score.create({
     data: {
       score: gameInst.score,
       user: gameInst.cfg.user
@@ -176,12 +210,16 @@ export async function onGameEnd(ts: string) {
 
     const id = parseInt(gameInst.cfg.matchId)
     const game = await prisma.twoPlayerGame.findFirst({
-      where: { id }
+      where: { id },
+      include: {
+        bets: true
+      }
     })
     if (!game || game.winner) return
 
     // First player to finish loses
     const winner = game.user === player ? game.opponent : game.user
+    const loser = game.user === player ? game.user : game.opponent
 
     await prisma.twoPlayerGame.update({
       where: { id },
@@ -192,5 +230,115 @@ export async function onGameEnd(ts: string) {
 
     complete2pGameOffer(game.channel, game.offerTs, game.user, game.opponent, winner)
     send2pGameEndingAnnouncement(game.channel, game.offerTs, winner, player)
+
+    // TODO write this entire betting logic better:
+  
+    const totalBetAmount = game.bets.reduce((total, bet) => total + bet.amount, 0)
+    const totalWinningBetsAmount = game.bets.reduce((total, bet) => {
+      return bet.betOn === winner ? total + bet.amount : 0
+    }, 0)
+
+    const viewerBets = game.bets.filter(b => !(b.user === game.user || b.user === game.opponent))
+    const playerBets = game.bets.filter(b => (b.user === game.user || b.user === game.opponent))
+
+    for (const bet of viewerBets) {
+      if (bet.betOn === winner) {
+        const proportion = bet.amount / totalWinningBetsAmount
+        const payout = Math.floor(proportion * totalBetAmount)
+        sendPayment(bet.user, payout, `Bet won on Tetris game ${game.id}`)
+        sendEphemeral(game.channel, bet.user, `:fastparrot: You won ${payout}‡ back from your ${bet.amount}‡ bet!!!`)
+      } else {
+        sendEphemeral(game.channel, bet.user, `:sadparrot: You lost your bet.`)
+      }
+    }
+
+    // Players have a seperate betting pool and can only bet equal amounts
+    const totalWinnerBet = playerBets.reduce((total, bet) => total + (bet.user === winner && bet.amount), 0)
+    const totalLoserBet = playerBets.reduce((total, bet) => total + (bet.user === loser && bet.amount), 0)
+    const minPlayerBet = Math.min(totalWinnerBet, totalLoserBet)
+
+    const winnerPayout = minPlayerBet * 2 + (totalWinnerBet - minPlayerBet)
+    if (winnerPayout) {
+      sendPayment(winner, winnerPayout, `Winnings from Tetris game ${game.id}`)
+      sendEphemeral(game.channel, winner, `:ultrafastparrot: Congrats on your win. I'm sending you ${minPlayerBet*2}‡`)
+    }
+  
+    // Loser gets some of their bet refunded if winner did not risk as much as loser.
+    const loserBetRefund = totalLoserBet - minPlayerBet
+    if (loserBetRefund) {
+      sendPayment(player, loserBetRefund, `Refund from Tetris bet on game ${game.id}`)
+      sendEphemeral(game.channel, player, `:coin-mario: I've refunded ${loserBetRefund}‡ of your bet.`)
+    }
   }
+}
+
+export async function onPayment (fromId: string, amount: number, reason: string) {
+  const refund = (text: string, channel?: string) => {
+    if (channel) sendEphemeral(channel, fromId, text)
+    else sendMessage(fromId, text)
+    sendPayment(fromId, amount, 'Refund payment')
+  }
+
+  let id: number, betTargetPlayer: number
+  try {
+    [id, betTargetPlayer] = reason.split('-').map(Number)
+    if (id < 1 || !(betTargetPlayer === 1 || betTargetPlayer === 2)) throw Error()
+  } catch {
+    refund(`I received ${amount}‡ from you, but don't understand why, so I'm sending it back.`)
+    return
+  }
+
+  const game = await prisma.twoPlayerGame.findFirst({
+    where: { id }
+  })
+
+  if (!game || game.started) {
+    refund(`Game ${id} either doesn't exist or has already started. Refunding your payment.`)
+    return
+  }
+
+  if ((fromId === game.user && betTargetPlayer !== 1) || (fromId === game.opponent && betTargetPlayer !== 2)) {
+    refund(`You can only bet on yourself. Refunding your payment.`, game.channel)
+    return
+  }
+
+  const betOn = betTargetPlayer === 1 ? game.user : game.opponent
+
+  try {
+    await prisma.bet.create({
+      data: {
+        user: fromId,
+        betOn,
+        amount,
+        gameId: game.id,
+      }
+    })
+    sendEphemeral(game.channel, fromId, `Your bet of ${amount}‡ on <@${betOn}> was received.`)
+  } catch {
+    refund(`Something went wrong and your bet couldn't be replaced. Refunding you ${amount}‡`, game.channel)
+    return
+  }
+
+  const viewerBets = await prisma.bet.findMany({
+    where: { 
+      gameId: game.id,
+      NOT: {
+        OR: [
+          { user: game.user },
+          { user: game.opponent }
+        ]
+      }
+    }
+  })
+
+  const total = viewerBets.reduce((total, bet) => total + bet.amount, 0)
+
+  update2pGameOffer(
+    game.channel, 
+    game.offerTs, 
+    game.user, 
+    game.opponent, 
+    game.id.toString(), 
+    total
+  )
 }
