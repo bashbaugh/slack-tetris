@@ -224,7 +224,7 @@ export async function update2pGameOffer (
         "type": "section",
         "text": {
           "type": "mrkdwn",
-          "text": `To place a bet on this match, send HN to me with reason \`${bettingId}-PLAYER\` (replace PLAYER with \`1\` or \`2\`). Ex: \`/send-hn 4 to @tetris for ${bettingId}-1\`. :money_with_wings: \n\nPlayers: you can only bet on yourself, and can win a maximum of 2x your own bet. You will be refunded any amount bet in excess of your opponent's bet, so agree beforehand on the amount to bet. \n\n*Current pool*: ${betsTotal}‡`
+          "text": `To place a bet on this match, send HN to me with reason \`${bettingId}-PLAYER\` (replace PLAYER with \`1\` or \`2\`). Ex: \`/send-hn 4 to @tetris for ${bettingId}-1\`. :money_with_wings: \n\nPlayers: You can only win a maximum of 2x your own bet. You will be refunded any amount bet in excess of your opponent's bet, so agree before starting on the amount to bet. \n\n*Current pool*: ${betsTotal}‡`
         }
       },
       {

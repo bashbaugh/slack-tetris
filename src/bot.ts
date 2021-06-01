@@ -216,6 +216,7 @@ export async function onGameEnd(gameInst: Game) {
 
     // First player to finish loses
     const winner = game.user === player ? game.opponent : game.user
+    const loser = game.user === player ? game.user : game.opponent
 
     await prisma.twoPlayerGame.update({
       where: { id },
@@ -226,30 +227,52 @@ export async function onGameEnd(gameInst: Game) {
 
     complete2pGameOffer(game.channel, game.offerTs, game.user, game.opponent, winner)
     send2pGameEndingAnnouncement(game.channel, game.offerTs, winner, player)
+
+    // TODO write this entire betting logic better:
   
     const totalBetAmount = game.bets.reduce((total, bet) => total + bet.amount, 0)
     const totalWinningBetsAmount = game.bets.reduce((total, bet) => {
       return bet.betOn === winner ? total + bet.amount : 0
     }, 0)
 
-    if (totalBetAmount > 0) {
-      for (const bet of game.bets) {
-        if (bet.betOn === winner) {
-          const proportion = bet.amount / totalWinningBetsAmount
-          const payout = Math.floor(proportion * totalBetAmount)
-          sendPayment(bet.user, payout, `Bet won on Tetris game ${game.id}`)
-          sendEphemeral(game.channel, bet.user, `:fastparrot: You won ${payout}‡ back from your ${bet.amount}‡ bet!!!`)
-        } else {
-          sendEphemeral(game.channel, bet.user, `:sadparrot: You lost your bet.`)
-        }
+    const viewerBets = game.bets.filter(b => !(b.user === game.user || b.user === game.opponent))
+    const playerBets = game.bets.filter(b => (b.user === game.user || b.user === game.opponent))
+
+    for (const bet of viewerBets) {
+      if (bet.betOn === winner) {
+        const proportion = bet.amount / totalWinningBetsAmount
+        const payout = Math.floor(proportion * totalBetAmount)
+        sendPayment(bet.user, payout, `Bet won on Tetris game ${game.id}`)
+        sendEphemeral(game.channel, bet.user, `:fastparrot: You won ${payout}‡ back from your ${bet.amount}‡ bet!!!`)
+      } else {
+        sendEphemeral(game.channel, bet.user, `:sadparrot: You lost your bet.`)
       }
+    }
+
+    // Players have a seperate betting pool and can only bet equal amounts
+    const totalWinnerBet = playerBets.reduce((total, bet) => total + (bet.user === winner && bet.amount), 0)
+    const totalLoserBet = playerBets.reduce((total, bet) => total + (bet.user === loser && bet.amount), 0)
+    const minPlayerBet = Math.min(totalWinnerBet, totalLoserBet)
+
+    const winnerPayout = minPlayerBet * 2 + (totalWinnerBet - minPlayerBet)
+    if (winnerPayout) {
+      sendPayment(winner, winnerPayout, `Winnings from Tetris game ${game.id}`)
+      sendEphemeral(game.channel, winner, `:ultrafastparrot: Congrats on your win. I'm sending you ${minPlayerBet*2}‡`)
+    }
+  
+    // Loser gets some of their bet refunded if winner did not risk as much as loser.
+    const loserBetRefund = totalLoserBet - minPlayerBet
+    if (loserBetRefund) {
+      sendPayment(player, loserBetRefund, `Refund from Tetris bet on game ${game.id}`)
+      sendEphemeral(game.channel, player, `:coin-mario: I've refunded ${loserBetRefund}‡ of your bet.`)
     }
   }
 }
 
 export async function onPayment (fromId: string, amount: number, reason: string) {
-  const refund = (text: string) => {
-    sendMessage(fromId, text)
+  const refund = (text: string, channel?: string) => {
+    if (channel) sendEphemeral(channel, fromId, text)
+    else sendMessage(fromId, text)
     sendPayment(fromId, amount, 'Refund payment')
   }
 
@@ -271,6 +294,11 @@ export async function onPayment (fromId: string, amount: number, reason: string)
     return
   }
 
+  if ((fromId === game.user && betTargetPlayer !== 1) || (fromId === game.opponent && betTargetPlayer !== 2)) {
+    refund(`You can only bet on yourself. Refunding your payment.`, game.channel)
+    return
+  }
+
   const betOn = betTargetPlayer === 1 ? game.user : game.opponent
 
   try {
@@ -284,15 +312,23 @@ export async function onPayment (fromId: string, amount: number, reason: string)
     })
     sendEphemeral(game.channel, fromId, `Your bet of ${amount}‡ on <@${betOn}> was received.`)
   } catch {
-    refund(`Something went wrong and your bet couldn't be replaced. Refunding you ${amount}‡`)
+    refund(`Something went wrong and your bet couldn't be replaced. Refunding you ${amount}‡`, game.channel)
     return
   }
 
-  const allBets = await prisma.bet.findMany({
-    where: { gameId: game.id }
+  const viewerBets = await prisma.bet.findMany({
+    where: { 
+      gameId: game.id,
+      NOT: {
+        OR: [
+          { user: game.user },
+          { user: game.opponent }
+        ]
+      }
+    }
   })
 
-  const total = allBets.reduce((total, bet) => total + bet.amount, 0)
+  const total = viewerBets.reduce((total, bet) => total + bet.amount, 0)
 
   update2pGameOffer(
     game.channel, 
