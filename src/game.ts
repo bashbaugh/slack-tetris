@@ -198,14 +198,11 @@ export class Game {
     const pieces = this.pieces.concat(includeActive && this.activePiece ? [this.activePiece] : [])
 
     for (const [pieceIndex, piece] of pieces.entries()) {
-      const rowsThisPieceFills = []
-      const isActiveTetromino = this.pieces.length - 1 === pieceIndex
 
       // Check which cells this shape fills and fill the corresponding cells on the grid:
       if (piece.type === 'tetromino') {
         iterateMatrix(piece.shape, (block, i, j) => {
           if (block) {
-            rowsThisPieceFills.push(piece.position[0] + i)
             grid[piece.position[0] + i][piece.position[1] + j] = piece.name
           }
         })
@@ -267,7 +264,8 @@ export class Game {
       // The user has cleared this row!!!
       if (cleared) this.pieces.push({
         type: 'clear',
-        row: rowIndex
+        // Subtract number of rows that are already cleared, because they (should) no longer exist when this clear happens:
+        row: rowIndex - fullRows
       })
 
       // Fill clears don't count :(
@@ -286,7 +284,7 @@ export class Game {
         type: 'fill',
       })
     }
-    // Also need to move active piece up to make sure it didn't overlap
+    // Also need to move active piece up to make sure it doesn't overlap
     this.activePiece.position[0] = this.activePiece.position[0] + num
   }
 
@@ -306,7 +304,7 @@ export class Game {
     return !foundConflict
   }
 
-  /** Accepts a cb fn which is used to edit the piece; then checks validity of the new position and rejects it if it's invalid */
+  /** Accepts a function argument which is called to edit the piece; then checks validity of the new position and rejects it if it's invalid */
   private updateActivePiece (getNewPiece: (piece: Tetromino) => Tetromino, skipUpdate?: boolean) {
     const newPiece = getNewPiece(cloneDeep(this.activePiece))
 
