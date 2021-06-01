@@ -8,7 +8,8 @@ const receiver = new ExpressReceiver({ signingSecret: process.env.SLACK_SIGNING_
 export const bot = new App({
   token: process.env.SLACK_BOT_TOKEN,
   appToken: process.env.SLACK_APP_TOKEN,
-  socketMode: true
+  socketMode: true,
+  receiver
 })
 
 registerBotListeners(bot)
