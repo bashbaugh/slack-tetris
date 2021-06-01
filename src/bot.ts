@@ -144,6 +144,9 @@ export function registerBotListeners(bot: App) {
       })
       return
     }
+
+    // Only a player can start the game
+    if (game.user !== body.user.id && game.opponent !== body.user.id) return
   
     const gameCfg: Omit<NewGameConfig, 'user'> = {
       channel: body.channel.id,
