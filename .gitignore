@@ -3,3 +3,4 @@ dist
 .env
 yarn-error.log
 prisma/*.db
+prisma/*.db-journal

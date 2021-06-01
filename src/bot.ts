@@ -7,7 +7,8 @@ import {
   send2pGameEndingAnnouncement, 
   update2pGameOffer, 
   sendEphemeral,
-  sendMessage
+  sendMessage,
+  GAME_BUTTONS
 } from './render'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { App } from '@slack/bolt'
@@ -15,13 +16,19 @@ import { sendPayment } from './hn'
 
 const prisma = new PrismaClient()
 
-const HELP_TEXT = `Hello! Do you want to play Tetris? To start a game, type \`/tetris\`
+const HELP_TEXT = `Hello! Do you want to play Tetris? To start a game, type \`/tetris\`. You'll probably want to be in #tetris.
 
 By default, it will be in open mode, meaning anyone can press the controls and move the pieces, so you'll have to work together. Or, you can type \`/tetris 1p\` to restrict control over the game to just yourself.
 
-TODO 2p
+You can also offer to start a two-player game by typing \`/tetris 2p\`. Once someone accepts the offer, players and others in the channel will be given the opportunity to place bets on the outcome of the match. After the game starts, you will play normally, except every line you clear (row filled) will be ADDED to the bottom of the other opponent's grid as a line of gray - so whoever can clear lines fastest will win.
 
-Source: https://github.com/scitronboy/slack-tetris`
+*Controls:*
+${GAME_BUTTONS.btn_rotate} ${GAME_BUTTONS.btn_left} ${GAME_BUTTONS.btn_right} - Rotate or move the active piece left/right
+${GAME_BUTTONS.btn_down} - Drop the active piece down into place
+${GAME_BUTTONS.btn_hold} - Place the active piece in the hold and replaces it with currently held piece
+${GAME_BUTTONS.btn_stop} - Forfeit game
+
+*Source*: https://github.com/scitronboy/slack-tetris`
 
 const games: Record<string, Game> = {}
 

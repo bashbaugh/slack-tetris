@@ -43,7 +43,7 @@ const INVISIBLE_CHARACTER = '⁣' // We can use this to force emojis down to the
 const WALL_LEFT = ':tetris-wall-left:'
 const WALL_RIGHT = ':tetris-wall-right:'
 
-const GAME_BUTTONS = {
+export const GAME_BUTTONS = {
   'btn_rotate': ':tetris-control-rotate:',
   'btn_left': ':tetris-control-left:',
   'btn_right': ':tetris-control-right:',
