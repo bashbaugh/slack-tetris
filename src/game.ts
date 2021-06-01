@@ -18,10 +18,10 @@ const SCORE_TABLE = {
 
 // Ex: after a score of 40, there will be a 1200ms delay between loops
 const LEVELS: [scoreThreshold: number, intervalDuration: number][] = [
-  [0, 1600],
-  [40, 1200],
-  [200, 1000],
-  [600, 800],
+  [0, 1400],
+  [40, 1000],
+  [200, 900],
+  [800, 800],
   [2000, 600],
   [20000, 400],
   [50000, 200],
@@ -135,7 +135,7 @@ export class Game {
     this.ts = await createGame(this.cfg.channel, this.cfg.thread_ts)
     
     setTimeout(() => {
-      this.loopInterval = setInterval(() => this.loop(), LEVELS[0][1])
+      this.loopInterval = setInterval(() => this.loop(), this.levelDelay)
     }, this.cfg.startDelay || 0)
 
     // Start game after 1 second
@@ -167,7 +167,7 @@ export class Game {
     // If we are on a new level, cancel the loop interval and set a new one with a shorter duration
     if (this.level > this.lastLevel) {
       clearInterval(this.loopInterval)
-      this.loopInterval = setInterval(() => this.loop(), LEVELS[this.level][1])
+      this.loopInterval = setInterval(() => this.loop(), this.levelDelay)
     }
 
     this.lastLevel = this.level
@@ -229,6 +229,11 @@ export class Game {
   /** Get level, computed from current score */
   public get level (): number {
     return LEVELS.reduce((lvl, [threshold]) => lvl += this.score >= Number(threshold) ? 1 : 0, 0)
+  }
+
+  /** Get current delay between loops  */
+  private get levelDelay (): number {
+    return LEVELS[this.level - 1][1]
   }
 
   /** Creates a new active piece and spawns it at the top */
