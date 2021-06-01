@@ -3,7 +3,7 @@ import { App, ExpressReceiver } from '@slack/bolt'
 import { registerHNWebhookListeners } from './hn'
 import { registerBotListeners } from './bot'
 import express from 'express'
-import http from 'http'
+import https from 'https'
 
 const router = express()
 
@@ -25,7 +25,7 @@ async function start() {
   // To keep Heroku awake. 
   // TODO don't hardcode
   setInterval(() => {
-    http.get('https://slack-tetris.herokuapp.com')
+    https.get('https://slack-tetris.herokuapp.com')
   }, 300000)
 }
 
