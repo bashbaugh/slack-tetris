@@ -198,7 +198,6 @@ export class Game {
     const pieces = this.pieces.concat(includeActive && this.activePiece ? [this.activePiece] : [])
 
     for (const [pieceIndex, piece] of pieces.entries()) {
-
       // Check which cells this shape fills and fill the corresponding cells on the grid:
       if (piece.type === 'tetromino') {
         iterateMatrix(piece.shape, (block, i, j) => {

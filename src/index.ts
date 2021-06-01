@@ -25,7 +25,7 @@ async function start() {
   // To keep Heroku awake. 
   // TODO don't hardcode
   setInterval(() => {
-    https.get('http://slack-tetris.herokuapp.com')
+    https.get('https://slack-tetris.herokuapp.com')
   }, 300000)
 }
 
