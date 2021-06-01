@@ -108,6 +108,7 @@ export class Game {
   private pieces: Piece[] // Array of pieces and other events such as line clears. Current piece is last.
   private activePiece: Tetromino
   private nextTetrominoes: TetrominoName[] // New tetrominos to place
+  private fillSlot: number // Where is the slot placed in filler rows?
   private lastLevel: number
   private loopInterval: NodeJS.Timeout
 
@@ -122,8 +123,10 @@ export class Game {
     this.cfg = cfg
     if (!this.cfg.mode) this.cfg.mode = 'open'
     this.score = 0
-  }
 
+    // Between the first and last rows (exclusive)
+    this.fillSlot = Math.floor(Math.random() * (GRID_WIDTH - 2) + 1)
+  }
 
   /** Creates the game message and starts the loop */
   public async startGame () {
@@ -212,6 +215,7 @@ export class Game {
       if (piece.type === 'fill') {
         grid.pop() // Remove row at top
         grid.unshift(new Array(GRID_WIDTH).fill('FILL')) // Add new filled row at bottom
+        grid[0][this.fillSlot] = null // Leave a slot in the fill so that it can be cleared
       }
     }
 
@@ -248,8 +252,8 @@ export class Game {
     const grid = this.renderBlockGrid(false)
 
     const lineClears = grid.reduce((fullRows, row, rowIndex) => {
-      const rowFull = row.find(b => !b) === undefined // No empty places found
-      const cleared = rowFull && row[0] !== 'FILL' // Filled rows don't count
+      const cleared = row.find(b => !b) === undefined // No empty places found
+      const isFillClear = row[0] === 'FILL'
 
       // The user has cleared this row!!!
       if (cleared) this.pieces.push({
@@ -257,7 +261,8 @@ export class Game {
         row: rowIndex
       })
 
-      return fullRows + (cleared ? 1 : 0)
+      // Fill clears don't count :(
+      return fullRows + ((cleared && !isFillClear) ? 1 : 0)
     }, 0)
 
     this.score += (SCORE_TABLE.lineClears[lineClears] || 0) * this.lastLevel
@@ -265,7 +270,7 @@ export class Game {
     if (this.opponent) this.opponent.addFillLines(lineClears)
   }
 
-  /** Add fill lines to the bottom of this game's grid */
+  /** Add fill lines to the bottom of this game's grid. Used by opponent game when they clear a line. */
   public addFillLines (num = 1) {
     for (let i = 0; i < num; i++) {
       this.pieces.push({
