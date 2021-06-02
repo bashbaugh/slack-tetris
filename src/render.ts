@@ -1,16 +1,28 @@
 import { GameMode, TetrominoName } from './game'
 import { bot } from '.'
 import { formatMilliseconds, pickRandom } from './util'
+import { WebClient, retryPolicies } from '@slack/web-api'
 
-export const sendEphemeral = (channel: string, user: string, text: string) => bot.client.chat.postEphemeral({
-  token: process.env.SLACK_BOT_TOKEN,
+const client = new WebClient(process.env.token, {
+  retryConfig: {
+    ...retryPolicies.fiveRetriesInFiveMinutes 
+  },
+})
+
+const noRetryClient = new WebClient(process.env.token, {
+  retryConfig: {
+    retries: 0
+  },
+  rejectRateLimitedCalls: true
+})
+
+export const sendEphemeral = (channel: string, user: string, text: string) => client.chat.postEphemeral({
   channel,
   user,
   text
 })
 
-export const sendMessage = (channel: string, text: string, thread_ts?: string) => bot.client.chat.postMessage({
-  token: process.env.SLACK_BOT_TOKEN,
+export const sendMessage = (channel: string, text: string, thread_ts?: string) => client.chat.postMessage({
   channel,
   thread_ts,
   text
@@ -178,8 +190,8 @@ export async function createGame (channel: string, thread_ts?: string): Promise<
 }
 
 export async function updateGame (channel: string, ts: string, game: GameMessageData) {
-  await bot.client.chat.update({
-    token: process.env.SLACK_BOT_TOKEN,
+  // Retries completely break the game when out-of-date state arrives many seconds later
+  await noRetryClient.chat.update({
     channel,
     ts,
     ...renderGameBlocks(game)
@@ -187,8 +199,7 @@ export async function updateGame (channel: string, ts: string, game: GameMessage
 }
 
 export async function create2pGameOffer (channel: string, user: string): Promise<string> {
-  const msg = await bot.client.chat.postMessage({
-    token: process.env.SLACK_BOT_TOKEN,
+  const msg = await client.chat.postMessage({
     channel,
     text: 'Want to play 2-player Tetris?',
     blocks: [
@@ -222,8 +233,7 @@ export async function update2pGameOffer (
   bettingId: string, 
   betsTotal: number = 0
 ) {
-  const msg = await bot.client.chat.update({
-    token: process.env.SLACK_BOT_TOKEN,
+  const msg = await client.chat.update({
     channel,
     ts,
     text: 'Two-player Tetris offer accepted',
@@ -283,7 +293,7 @@ export async function complete2pGameOffer (channel: string, ts: string, user: st
     ? `<@${winner}> ${pickRandom(GAME_WINNER_VERB)} <@${winnerOpponent}> in a Tetris game!`
     : `<@${user}> is playing against <@${opponent}> in a totally ${pickRandom(GAME_DESCRIPTION_WORDS)} game!\n↓ ↓ ↓ ↓`
 
-  await bot.client.chat.update({
+  await client.chat.update({
     token: process.env.SLACK_BOT_TOKEN,
     channel,
     ts,
@@ -295,7 +305,7 @@ export async function complete2pGameOffer (channel: string, ts: string, user: st
 export async function send2pGameEndingAnnouncement (channel: string, thread_ts: string, winner: string, loser: string) {
   const text = `<@${winner}> won!!! Better luck next time, <@${loser}>`
 
-  const msg = await bot.client.chat.postMessage({
+  const msg = await client.chat.postMessage({
     token: process.env.SLACK_BOT_TOKEN,
     channel,
     thread_ts,
