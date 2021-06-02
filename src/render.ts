@@ -3,13 +3,13 @@ import { bot } from '.'
 import { formatMilliseconds, pickRandom } from './util'
 import { WebClient, retryPolicies } from '@slack/web-api'
 
-const client = new WebClient(process.env.token, {
+const client = new WebClient(process.env.SLACK_BOT_TOKEN, {
   retryConfig: {
     ...retryPolicies.fiveRetriesInFiveMinutes 
   },
 })
 
-const noRetryClient = new WebClient(process.env.token, {
+const noRetryClient = new WebClient(process.env.SLACK_BOT_TOKEN, {
   retryConfig: {
     retries: 0
   },
@@ -190,8 +190,9 @@ export async function createGame (channel: string, thread_ts?: string): Promise<
 }
 
 export async function updateGame (channel: string, ts: string, game: GameMessageData) {
-  // Retries completely break the game when out-of-date state arrives many seconds later
-  await noRetryClient.chat.update({
+  // Retries completely break the game when out-of-date state arrives many seconds later.
+  const clientForUpdate = game.gameOver ? client : noRetryClient
+  await clientForUpdate.chat.update({
     channel,
     ts,
     ...renderGameBlocks(game)
